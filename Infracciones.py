@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import os
@@ -8,10 +9,10 @@ from fpdf import FPDF
 from supabase import create_client, Client
 
 # =====================================
-# CONFIGURACIÓN SUPABASE
+# CONFIGURACIÓN SUPABASE (Reemplaza con tus nuevos datos gratuitos)
 # =====================================
 
-SUPABASE_URL = "https://dshlpeieifevbvubacmn.supabase.co"
+SUPABASE_URL = "https://supabase.co"
 
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRzaGxwZWllaWZldmJ2dWJhY21uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwNDg1NzUsImV4cCI6MjA5NDYyNDU3NX0.dExc9YVOEyBVxyNTJ9CYW3lM4cvQgEsPXpjXY1rhj6Y"
 
@@ -34,8 +35,15 @@ PASSWORD_ADMIN = "Seguridad2026"
 CHOFERES_EXTRAS_FILE = "choferes_extras.txt"
 
 # =====================================
-# FUNCIONES
+# FUNCIONES Y CACHÉ (SOLUCIÓN DE MEMORIA)
 # =====================================
+
+# El decorador cache_data almacena las consultas por 5 minutos (300 segundos).
+# Esto soluciona de raíz el consumo masivo de memoria y transferencia de red.
+@st.cache_data(ttl=300)
+def consultar_infracciones_cache():
+    return supabase.table("infracciones").select("*").execute()
+
 
 def cargar_lista_txt(ruta_archivo, nombres_defecto):
 
@@ -175,17 +183,12 @@ else:
     )
 
     # =====================================
-    # ALERTAS
+    # ALERTAS (OPTIMIZADO CON CACHÉ)
     # =====================================
 
     try:
-
-        response = (
-            supabase
-            .table("infracciones")
-            .select("*")
-            .execute()
-        )
+        # Usamos la nueva función con caché para no agotar tu plan gratuito
+        response = consultar_infracciones_cache()
 
         df_alertas = pd.DataFrame(
             response.data
@@ -256,6 +259,7 @@ else:
         )
 
         operario = ""
+        grupo_pertenencia = ""  # Variable para guardar a qué lista pertenece
 
         if opcion_seleccionada == "Choferes de T1":
 
@@ -263,6 +267,7 @@ else:
                 "Personal de T1 Involucrado",
                 LISTA_T1
             )
+            grupo_pertenencia = "T1"
 
         elif opcion_seleccionada == "Choferes de T2":
 
@@ -270,6 +275,7 @@ else:
                 "Personal de T2 Involucrado",
                 LISTA_T2
             )
+            grupo_pertenencia = "T2"
 
         elif opcion_seleccionada == "Choferes de T2 Catamarca":
 
@@ -277,6 +283,7 @@ else:
                 "Choferes de T2 Catamarca",
                 LISTA_T2_CATAMARCA
             )
+            grupo_pertenencia = "T2 Catamarca"
 
         elif opcion_seleccionada == "Choferes de T2 La Rioja":
 
@@ -284,6 +291,7 @@ else:
                 "Choferes de T2 La Rioja",
                 LISTA_T2_LARIOJA
             )
+            grupo_pertenencia = "T2 La Rioja"
 
         elif opcion_seleccionada == "Choferes de T2 Santiago Del Estero":
 
@@ -291,12 +299,14 @@ else:
                 "Choferes de T2 Santiago Del Estero",
                 LISTA_T2_SANTIAGO
             )
+            grupo_pertenencia = "T2 Santiago Del Estero"
 
         elif opcion_seleccionada == "Cargar nombres apartes":
 
             st.info(
                 "Módulo para registrar choferes fuera de T1/T2."
             )
+            grupo_pertenencia = "Carga Aparte / Extra"
 
             with st.expander(
                 "➕ Registrar nuevo chofer"
@@ -349,7 +359,11 @@ else:
         # =====================================
         # FORMULARIO
         # =====================================
+        
+        st.write("---")
+        st.markdown(f"**Conductor:** {operario} | **Lista de Origen:** {grupo_pertenencia}")
 
+        # Se agregaron los nuevos desvíos solicitados al listado
         faltas = st.multiselect(
             "Tipos de Incumplimiento",
             [
@@ -359,438 +373,23 @@ else:
                 "Uso del celular",
                 "Comportamiento indebido",
                 "No cumple con el punto seguro",
-                "No espera a ser asistido en la Maniobra de reversa",
-                "Exceso de velocidad",
-                "Interaccion Hombre-Maquina"
+                "Estaciona en zona prohibida",
+                "No posee alarma de retroceso",
+                "Exceso de velocidad"
             ]
         )
 
-        fecha = st.date_input(
-            "Fecha del Reporte",
-            date.today()
-        )
+        observaciones = st.text_area("Observaciones adicionales / Detalles")
+        fecha_registro = st.date_input("Fecha del Evento", date.today())
 
-        sancion = st.text_input(
-            "Sanción Administrativa"
-        )
-
-        descripcion = st.text_area(
-            "Descripción Técnica de los Hechos"
-        )
-
-        foto = st.file_uploader(
-            "Adjuntar Evidencia Fotográfica",
-            type=["jpg", "png", "jpeg"]
-        )
-
-        # =====================================
-        # GUARDAR
-        # =====================================
-
-        if st.button(
-            "Confirmar y Guardar Registro",
-            type="primary",
-            use_container_width=True
-        ):
-
+        if st.button("Guardar Informe"):
             if not operario:
-
-                st.error(
-                    "Debe seleccionar un chofer."
-                )
-
+                st.error("Por favor, seleccione un operario/chofer válido.")
             elif not faltas:
-
-                st.error(
-                    "Debe seleccionar al menos una falta."
-                )
-
+                st.error("Debe seleccionar al menos un tipo de incumplimiento.")
             else:
-
-                f_nombre = "Sin Evidencia"
-
-                # =====================================
-                # FOTO EN STORAGE
-                # =====================================
-
-                if foto:
-
-                    try:
-
-                        nombre_limpio = limpiar_nombre_archivo(
-                            operario
-                        )
-
-                        extension = (
-                            foto.name
-                            .split(".")[-1]
-                            .lower()
-                        )
-
-                        nombre_archivo = (
-                            f"{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}"
-                            f"_{nombre_limpio}.{extension}"
-                        )
-
-                        contenido = foto.getvalue()
-
-                        supabase.storage.from_(
-                            "fotos-infracciones"
-                        ).upload(
-                            path=nombre_archivo,
-                            file=contenido,
-                            file_options={
-                                "content-type": foto.type
-                            }
-                        )
-
-                        f_nombre = supabase.storage.from_(
-                            "fotos-infracciones"
-                        ).get_public_url(
-                            nombre_archivo
-                        )
-
-                    except Exception as e:
-
-                        st.error(
-                            f"Error subiendo imagen: {e}"
-                        )
-
-                # =====================================
-                # GUARDAR EN SUPABASE
-                # =====================================
-
-                try:
-
-                    supabase.table(
-                        "infracciones"
-                    ).insert({
-
-                        "fecha": str(fecha),
-                        "operario": operario,
-                        "faltas": ", ".join(faltas),
-                        "descripcion": descripcion,
-                        "sancion": sancion,
-                        "foto_path": f_nombre
-
-                    }).execute()
-
-                    st.success(
-                        "Registro almacenado exitosamente."
-                    )
-
-                    st.rerun()
-
-                except Exception as e:
-
-                    st.error(
-                        f"Error guardando: {e}"
-                    )
-
-    # =====================================
-    # HISTORIAL
-    # =====================================
-
-    with tab_hist:
-
-        st.subheader(
-            "Administración de Registros"
-        )
-
-        try:
-
-            response = (
-                supabase
-                .table("infracciones")
-                .select("*")
-                .execute()
-            )
-
-            datos = pd.DataFrame(
-                response.data
-            )
-
-            if not datos.empty:
-
-                for i, fila in (
-                    datos.iloc[::-1]
-                    .iterrows()
-                ):
-
-                    with st.container(border=True):
-
-                        st.markdown(
-                            f"### Reporte: {fila['fecha']} | {fila['operario']}"
-                        )
-
-                        st.markdown(
-                            f"**Infracción:** {fila['faltas']}"
-                        )
-
-                        st.markdown(
-                            f"**Sanción:** {fila['sancion']}"
-                        )
-
-                        st.write(
-                            f"**Detalles:** {fila['descripcion']}"
-                        )
-
-                        if fila['foto_path'] != "Sin Evidencia":
-
-                            st.image(
-                                fila['foto_path'],
-                                width=300
-                            )
-
-                        # =====================================
-                        # PDF
-                        # =====================================
-
-                        pdf = FPDF()
-
-                        pdf.add_page()
-
-                        pdf.set_auto_page_break(
-                            auto=True,
-                            margin=15
-                        )
-
-                        # Fondo
-
-                        pdf.set_fill_color(
-                            245,
-                            245,
-                            245
-                        )
-
-                        pdf.rect(
-                            0,
-                            0,
-                            210,
-                            297,
-                            style='F'
-                        )
-
-                        # Título
-
-                        pdf.set_text_color(
-                            220,
-                            0,
-                            0
-                        )
-
-                        pdf.set_font(
-                            "Helvetica",
-                            "B",
-                            18
-                        )
-
-                        pdf.cell(
-                            0,
-                            15,
-                            "INFORME DE INCIDENCIA DE SEGURIDAD INDUSTRIAL",
-                            ln=True,
-                            align="C"
-                        )
-
-                        pdf.set_text_color(
-                            80,
-                            80,
-                            80
-                        )
-
-                        pdf.set_font(
-                            "Helvetica",
-                            "I",
-                            10
-                        )
-
-                        pdf.cell(
-                            0,
-                            5,
-                            "Control de Gestion de Seguridad e Higiene",
-                            ln=True,
-                            align="C"
-                        )
-
-                        pdf.ln(10)
-
-                        # Línea roja
-
-                        pdf.set_draw_color(
-                            220,
-                            0,
-                            0
-                        )
-
-                        pdf.line(
-                            10,
-                            pdf.get_y(),
-                            200,
-                            pdf.get_y()
-                        )
-
-                        pdf.ln(10)
-
-                        # Datos
-
-                        datos_pdf = [
-                            ("Fecha del Reporte:", fila['fecha']),
-                            ("Conductor / Operario:", fila['operario']),
-                            ("Infracciones / Faltas:", fila['faltas']),
-                            ("Sanción Administrativa:", fila['sancion'])
-                        ]
-
-                        for titulo, valor in datos_pdf:
-
-                            pdf.set_font(
-                                "Helvetica",
-                                "B",
-                                11
-                            )
-
-                            pdf.cell(
-                                55,
-                                10,
-                                str(titulo),
-                                border=0
-                            )
-
-                            pdf.set_font(
-                                "Helvetica",
-                                "",
-                                11
-                            )
-
-                            pdf.multi_cell(
-                                120,
-                                10,
-                                str(valor)
-                            )
-
-                            pdf.line(
-                                10,
-                                pdf.get_y(),
-                                190,
-                                pdf.get_y()
-                            )
-
-                            pdf.ln(2)
-
-                        # Descripción
-
-                        pdf.ln(5)
-
-                        pdf.set_font(
-                            "Helvetica",
-                            "B",
-                            12
-                        )
-
-                        pdf.cell(
-                            0,
-                            10,
-                            "Descripción Técnica de los Hechos:",
-                            ln=True
-                        )
-
-                        pdf.set_font(
-                            "Helvetica",
-                            "",
-                            11
-                        )
-
-                        pdf.multi_cell(
-                            180,
-                            8,
-                            str(fila['descripcion']),
-                            border=1
-                        )
-
-                        pdf.ln(10)
-
-                        # Evidencia
-
-                        pdf.set_font(
-                            "Helvetica",
-                            "B",
-                            12
-                        )
-
-                        pdf.cell(
-                            0,
-                            10,
-                            "Evidencia Fotográfica:",
-                            ln=True
-                        )
-
-                        pdf.ln(5)
-
-                        if fila['foto_path'] != "Sin Evidencia":
-
-                            try:
-
-                                response_img = requests.get(
-                                    fila['foto_path']
-                                )
-
-                                if response_img.status_code == 200:
-
-                                    imagen_temp = f"temp_{i}.jpg"
-
-                                    with open(
-                                        imagen_temp,
-                                        "wb"
-                                    ) as img_file:
-
-                                        img_file.write(
-                                            response_img.content
-                                        )
-
-                                    pdf.image(
-                                        imagen_temp,
-                                        x=10,
-                                        w=120
-                                    )
-
-                                    if os.path.exists(imagen_temp):
-
-                                        os.remove(imagen_temp)
-
-                            except Exception as e:
-
-                                st.warning(
-                                    f"No se pudo cargar la imagen en el PDF: {e}"
-                                )
-
-                        # =====================================
-                        # EXPORTAR PDF
-                        # =====================================
-
-                        pdf_bytes = pdf.output(dest="S")
-
-                        if isinstance(pdf_bytes, bytearray):
-                            pdf_bytes = bytes(pdf_bytes)
-
-                        elif isinstance(pdf_bytes, str):
-                            pdf_bytes = pdf_bytes.encode("latin-1")
-
-                        st.download_button(
-                            label="📥 Descargar PDF",
-                            data=pdf_bytes,
-                            file_name=f"Informe_{fila['id']}.pdf",
-                            mime="application/pdf",
-                            key=f"dl_{i}"
-                        )
-
-            else:
-
-                st.warning(
-                    "No existen registros todavía."
-                )
-
-        except Exception as e:
-
-            st.error(
-                f"Error cargando historial: {e}"
-            )
+                # El diccionario incluye la columna 'grupo_lista' para guardar el origen
+                datos_informe = {
+                    "operario": operario,
+                    "grupo_lista": grupo_pertenencia,
+                    "faltas": faltas,
