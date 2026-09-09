@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import os
@@ -9,10 +8,10 @@ from fpdf import FPDF
 from supabase import create_client, Client
 
 # =====================================
-# CONFIGURACIÓN SUPABASE (Reemplaza con tus nuevos datos gratuitos)
+# CONFIGURACIÓN SUPABASE (Pon aquí tus nuevos datos)
 # =====================================
 
-SUPABASE_URL = "https://supabase.co"
+SUPABASE_URL = "https://dshlpeieifevbvubacmn.supabase.co"
 
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRzaGxwZWllaWZldmJ2dWJhY21uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwNDg1NzUsImV4cCI6MjA5NDYyNDU3NX0.dExc9YVOEyBVxyNTJ9CYW3lM4cvQgEsPXpjXY1rhj6Y"
 
@@ -38,8 +37,6 @@ CHOFERES_EXTRAS_FILE = "choferes_extras.txt"
 # FUNCIONES Y CACHÉ (SOLUCIÓN DE MEMORIA)
 # =====================================
 
-# El decorador cache_data almacena las consultas por 5 minutos (300 segundos).
-# Esto soluciona de raíz el consumo masivo de memoria y transferencia de red.
 @st.cache_data(ttl=300)
 def consultar_infracciones_cache():
     return supabase.table("infracciones").select("*").execute()
@@ -93,30 +90,11 @@ def limpiar_nombre_archivo(texto):
 # LISTAS
 # =====================================
 
-LISTA_T1 = cargar_lista_txt(
-    "choferes_t1.txt",
-    []
-)
-
-LISTA_T2 = cargar_lista_txt(
-    "choferes_t2.txt",
-    []
-)
-
-LISTA_T2_CATAMARCA = cargar_lista_txt(
-    "choferes_t2_catamarca.txt",
-    []
-)
-
-LISTA_T2_LARIOJA = cargar_lista_txt(
-    "choferes_t2_larioja.txt",
-    []
-)
-
-LISTA_T2_SANTIAGO = cargar_lista_txt(
-    "choferes_t2_santiago.txt",
-    []
-)
+LISTA_T1 = cargar_lista_txt("choferes_t1.txt", [])
+LISTA_T2 = cargar_lista_txt("choferes_t2.txt", [])
+LISTA_T2_CATAMARCA = cargar_lista_txt("choferes_t2_catamarca.txt", [])
+LISTA_T2_LARIOJA = cargar_lista_txt("choferes_t2_larioja.txt", [])
+LISTA_T2_SANTIAGO = cargar_lista_txt("choferes_t2_santiago.txt", [])
 
 # =====================================
 # STREAMLIT
@@ -140,26 +118,18 @@ def login():
 
     user = st.text_input("Usuario")
 
-    password = st.text_input(
-        "Contraseña",
-        type="password"
-    )
+    password = st.text_input("Contraseña", type="password")
 
     if st.button("Ingresar"):
 
-        if (
-            user == USUARIO_ADMIN
-            and password == PASSWORD_ADMIN
-        ):
+        if user == USUARIO_ADMIN and password == PASSWORD_ADMIN:
 
             st.session_state["autenticado"] = True
             st.rerun()
 
         else:
 
-            st.error(
-                "Credenciales incorrectas."
-            )
+            st.error("Credenciales incorrectas.")
 
 # =====================================
 # APP PRINCIPAL
@@ -178,54 +148,34 @@ else:
         st.session_state["autenticado"] = False
         st.rerun()
 
-    st.title(
-        "Sistema de Gestión de Seguridad e Higiene"
-    )
+    st.title("Sistema de Gestión de Seguridad e Higiene")
 
     # =====================================
     # ALERTAS (OPTIMIZADO CON CACHÉ)
     # =====================================
 
     try:
-        # Usamos la nueva función con caché para no agotar tu plan gratuito
         response = consultar_infracciones_cache()
-
-        df_alertas = pd.DataFrame(
-            response.data
-        )
+        df_alertas = pd.DataFrame(response.data)
 
         if not df_alertas.empty:
 
-            conteo_faltas = (
-                df_alertas["operario"]
-                .value_counts()
-            )
-
-            reincidentes = (
-                conteo_faltas[
-                    conteo_faltas >= 3
-                ]
-            )
+            conteo_faltas = df_alertas["operario"].value_counts()
+            reincidentes = conteo_faltas[conteo_faltas >= 3]
 
             if not reincidentes.empty:
 
                 with st.container(border=True):
 
-                    st.error(
-                        "⚠️ ALERTA DE SEGURIDAD: CONTROL DE REINCIDENCIA CRÍTICA"
-                    )
+                    st.error("⚠️ ALERTA DE SEGURIDAD: CONTROL DE REINCIDENCIA CRÍTICA")
 
                     for chofer, total in reincidentes.items():
 
-                        st.markdown(
-                            f"* El conductor **{chofer}** ha acumulado **{total} informes**."
-                        )
+                        st.markdown(f"* El conductor **{chofer}** ha acumulado **{total} informes**.")
 
     except Exception as e:
 
-        st.error(
-            f"Error cargando alertas: {e}"
-        )
+        st.error(f"Error cargando alertas: {e}")
 
     # =====================================
     # TABS
@@ -242,9 +192,7 @@ else:
 
     with tab_reg:
 
-        st.subheader(
-            "Formulario de Registro"
-        )
+        st.subheader("Formulario de Registro")
 
         opcion_seleccionada = st.radio(
             "Seleccione el grupo de personal:",
@@ -259,102 +207,55 @@ else:
         )
 
         operario = ""
-        grupo_pertenencia = ""  # Variable para guardar a qué lista pertenece
+        grupo_pertenencia = ""
 
         if opcion_seleccionada == "Choferes de T1":
-
-            operario = st.selectbox(
-                "Personal de T1 Involucrado",
-                LISTA_T1
-            )
+            operario = st.selectbox("Personal de T1 Involucrado", LISTA_T1)
             grupo_pertenencia = "T1"
 
         elif opcion_seleccionada == "Choferes de T2":
-
-            operario = st.selectbox(
-                "Personal de T2 Involucrado",
-                LISTA_T2
-            )
+            operario = st.selectbox("Personal de T2 Involucrado", LISTA_T2)
             grupo_pertenencia = "T2"
 
         elif opcion_seleccionada == "Choferes de T2 Catamarca":
-
-            operario = st.selectbox(
-                "Choferes de T2 Catamarca",
-                LISTA_T2_CATAMARCA
-            )
+            operario = st.selectbox("Choferes de T2 Catamarca", LISTA_T2_CATAMARCA)
             grupo_pertenencia = "T2 Catamarca"
 
         elif opcion_seleccionada == "Choferes de T2 La Rioja":
-
-            operario = st.selectbox(
-                "Choferes de T2 La Rioja",
-                LISTA_T2_LARIOJA
-            )
+            operario = st.selectbox("Choferes de T2 La Rioja", LISTA_T2_LARIOJA)
             grupo_pertenencia = "T2 La Rioja"
 
         elif opcion_seleccionada == "Choferes de T2 Santiago Del Estero":
-
-            operario = st.selectbox(
-                "Choferes de T2 Santiago Del Estero",
-                LISTA_T2_SANTIAGO
-            )
+            operario = st.selectbox("Choferes de T2 Santiago Del Estero", LISTA_T2_SANTIAGO)
             grupo_pertenencia = "T2 Santiago Del Estero"
 
         elif opcion_seleccionada == "Cargar nombres apartes":
 
-            st.info(
-                "Módulo para registrar choferes fuera de T1/T2."
-            )
+            st.info("Módulo para registrar choferes fuera de T1/T2.")
             grupo_pertenencia = "Carga Aparte / Extra"
 
-            with st.expander(
-                "➕ Registrar nuevo chofer"
-            ):
+            with st.expander("➕ Registrar nuevo chofer"):
 
-                nuevo_nombre = st.text_input(
-                    "Nombre completo del nuevo chofer"
-                )
+                nuevo_nombre = st.text_input("Nombre completo del nuevo chofer")
 
-                if st.button(
-                    "Guardar nombre en el sistema"
-                ):
+                if st.button("Guardar nombre en el sistema"):
 
                     if nuevo_nombre.strip() != "":
 
-                        guardar_chofer_extra(
-                            nuevo_nombre.strip()
-                        )
-
-                        st.success(
-                            f"{nuevo_nombre} agregado con éxito."
-                        )
-
+                        guardar_chofer_extra(nuevo_nombre.strip())
+                        st.success(f"{nuevo_nombre} agregado con éxito.")
                         st.rerun()
 
                     else:
 
-                        st.error(
-                            "El nombre no puede estar vacío."
-                        )
+                        st.error("El nombre no puede estar vacío.")
 
-            lista_extras = cargar_lista_txt(
-                CHOFERES_EXTRAS_FILE,
-                []
-            )
+            lista_extras = cargar_lista_txt(CHOFERES_EXTRAS_FILE, [])
 
             if lista_extras:
-
-                operario = st.selectbox(
-                    "Seleccione el chofer",
-                    lista_extras
-                )
-
+                operario = st.selectbox("Seleccione el chofer", lista_extras)
             else:
-
-                st.warning(
-                    "No hay choferes cargados."
-                )
+                st.warning("No hay choferes cargados.")
 
         # =====================================
         # FORMULARIO
@@ -363,7 +264,6 @@ else:
         st.write("---")
         st.markdown(f"**Conductor:** {operario} | **Lista de Origen:** {grupo_pertenencia}")
 
-        # Se agregaron los nuevos desvíos solicitados al listado
         faltas = st.multiselect(
             "Tipos de Incumplimiento",
             [
@@ -388,8 +288,45 @@ else:
             elif not faltas:
                 st.error("Debe seleccionar al menos un tipo de incumplimiento.")
             else:
-                # El diccionario incluye la columna 'grupo_lista' para guardar el origen
                 datos_informe = {
                     "operario": operario,
                     "grupo_lista": grupo_pertenencia,
                     "faltas": faltas,
+                    "observaciones": observaciones,
+                    "fecha": str(fecha_registro)
+                }
+
+                try:
+                    supabase.table("infracciones").insert(datos_informe).execute()
+                    st.success("¡Informe registrado exitosamente!")
+                    st.cache_data.clear()
+                    st.rerun()
+                except Exception as error_db:
+                    st.error(f"Error al guardar en la base de datos: {error_db}")
+
+    # =====================================
+    # HISTORIAL
+    # =====================================
+
+    with tab_hist:
+        st.subheader("Historial de Registros")
+        
+        try:
+            response_historial = consultar_infracciones_cache()
+            df_historial = pd.DataFrame(response_historial.data)
+
+            if df_historial.empty:
+                st.info("No hay informes registrados todavía.")
+            else:
+                if "created_at" in df_historial.columns:
+                    df_historial = df_historial.sort_values(by="created_at", ascending=False)
+                
+                st.dataframe(df_historial, use_container_width=True)
+                
+                if st.button("🔄 Forzar actualización de datos"):
+                    st.cache_data.clear()
+                    st.rerun()
+        except Exception as e:
+            st.error(f"Error visualizando el historial: {e}")
+
+
