@@ -37,7 +37,8 @@ CHOFERES_EXTRAS_FILE = "choferes_extras.txt"
 @st.cache_data(ttl=300)
 def consultar_infracciones_cache():
     try:
-        response = supabase.table("infracciones").select("*").execute()
+        # Se cambió a 'Infracciones' con mayúscula como tu tabla real
+        response = supabase.table("Infracciones").select("*").execute()
         return response.data
     except Exception as e:
         st.error(f"Error de conexión con la base de datos: {e}")
@@ -72,8 +73,8 @@ def generar_pdf_informe(row):
     pdf.ln(10)
     
     pdf.set_font("Arial", "", 12)
-    pdf.cell(200, 10, f"Fecha del Registro: {row.get('fecha', row.get('Fecha', 'N/A'))}", ln=True)
-    pdf.cell(200, 10, f"Conductor/Operario: {row.get('operario', row.get('Operario', 'N/A'))}", ln=True)
+    pdf.cell(200, 10, f"Fecha del Registro: {row.get('Fecha', row.get('fecha', 'N/A'))}", ln=True)
+    pdf.cell(200, 10, f"Conductor/Operario: {row.get('Operario', row.get('operario', 'N/A'))}", ln=True)
     pdf.cell(200, 10, f"Lista de Origen: {row.get('grupo_lista', row.get('Grupo_lista', 'N/A'))}", ln=True)
     pdf.ln(5)
     
@@ -81,7 +82,7 @@ def generar_pdf_informe(row):
     pdf.cell(200, 10, "Desvios Detectados:", ln=True)
     pdf.set_font("Arial", "", 12)
     
-    faltas_data = row.get('faltas', row.get('Faltas', ''))
+    faltas_data = row.get('Faltas', row.get('faltas', ''))
     if isinstance(faltas_data, list):
         for falta in faltas_data:
             pdf.cell(200, 8, f"- {falta}", ln=True)
@@ -93,7 +94,7 @@ def generar_pdf_informe(row):
     pdf.cell(200, 10, "Sancion / Observaciones:", ln=True)
     pdf.set_font("Arial", "", 12)
     
-    sancion_data = row.get('sancion', row.get('Sancion', row.get('observaciones', 'Sin observaciones registradas.')))
+    sancion_data = row.get('Sancion', row.get('sancion', 'Sin observaciones registradas.'))
     pdf.multi_cell(0, 10, str(sancion_data))
     
     return pdf.output(dest="S").encode("latin-1", errors="ignore")
@@ -151,7 +152,7 @@ else:
     datos_alertas = consultar_infracciones_cache()
     if datos_alertas:
         df_alertas = pd.DataFrame(datos_alertas)
-        col_op = "operario" if "operario" in df_alertas.columns else ("Operario" if "Operario" in df_alertas.columns else None)
+        col_op = "Operario" if "Operario" in df_alertas.columns else ("operario" if "operario" in df_alertas.columns else None)
         
         if not df_alertas.empty and col_op:
             conteo_faltas = df_alertas[col_op].value_counts()
@@ -226,6 +227,7 @@ else:
             ]
         )
 
+        # ✍️ AQUÍ ESTÁ TU RECUADRO DE TEXTO PARA ESCRIBIR LA SANCIÓN libremente
         sancion_input = st.text_area("Sanción aplicada / Detalles de la medida")
         fecha_registro = st.date_input("Fecha del Evento", date.today())
 
@@ -235,16 +237,16 @@ else:
             elif not faltas:
                 st.error("Debe seleccionar al menos un tipo de incumplimiento.")
             else:
-                # Ahora apunta exactamente a la columna 'sancion' en minúscula
+                # Armado con las mayúsculas idénticas a tus columnas de Supabase
                 datos_informe = {
-                    "operario": operario,
+                    "Operario": operario,
                     "grupo_lista": grupo_pertenencia,
-                    "faltas": faltas,
-                    "sancion": sancion_input,
-                    "fecha": str(fecha_registro)
+                    "Faltas": faltas,
+                    "Sancion": sancion_input,
+                    "Fecha": str(fecha_registro)
                 }
                 try:
-                    supabase.table("infracciones").insert(datos_informe).execute()
+                    supabase.table("Infracciones").insert(datos_informe).execute()
                     st.success("¡Informe registrado exitosamente!")
                     st.cache_data.clear()
                     st.rerun()
@@ -259,5 +261,3 @@ else:
         if not datos_historial:
             st.info("No hay informes registrados todavía en esta base de datos.")
         else:
-            df_historial = pd.DataFrame(datos_historial)
-            col_id = "id" if "id" in df_historial.columns else ("Id" if "Id" in df_historial.columns else None)
