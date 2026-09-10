@@ -11,10 +11,9 @@ from supabase import create_client, Client
 # CONFIGURACIÓN SUPABASE (Pon aquí tus nuevos datos)
 # =====================================
 
-SUPABASE_URL = "https://pkohpvgoqaiojysxupig.supabase.co"
+SUPABASE_URL = "https://zwchdpugmqturznuxntc.supabase.co"
 
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBrb2hwdmdvcWFpb2p5c3h1cGlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5OTE5MDYsImV4cCI6MjEwNDU2NzkwNn0.hmZiOJTxEQ3o-EsxnxZ4W5XQckfd7nFz3H0D6VWn8Pw"
-
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3Y2hkcHVnbXF0dXJ6bnV4bnRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5OTM0MjYsImV4cCI6MjEwNDU2OTQyNn0.3ZPaWLTh2rWcnGvK_Cg5USgAOGxrB0dRd-AwYhEPK6s"
 supabase: Client = create_client(
     SUPABASE_URL,
     SUPABASE_KEY
