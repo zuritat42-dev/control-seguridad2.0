@@ -90,10 +90,10 @@ def generar_pdf_informe(row):
         
     pdf.ln(5)
     pdf.set_font("Arial", "B", 12)
-    pdf.cell(200, 10, "sancion / Observaciones:", ln=True)
+    pdf.cell(200, 10, "Sancion / Observaciones:", ln=True)
     pdf.set_font("Arial", "", 12)
     
-    sancion_data = row.get('sancion', row.get('sancion', row.get('observaciones', 'Sin observaciones registrados.')))
+    sancion_data = row.get('sancion', row.get('Sancion', row.get('observaciones', 'Sin observaciones registradas.')))
     pdf.multi_cell(0, 10, str(sancion_data))
     
     return pdf.output(dest="S").encode("latin-1", errors="ignore")
@@ -235,12 +235,12 @@ else:
             elif not faltas:
                 st.error("Debe seleccionar al menos un tipo de incumplimiento.")
             else:
-                # Se mapea exactamente al nombre de tus columnas en Supabase
+                # Ahora apunta exactamente a la columna 'sancion' en minúscula
                 datos_informe = {
                     "operario": operario,
                     "grupo_lista": grupo_pertenencia,
                     "faltas": faltas,
-                    "Sancion": sancion_input,
+                    "sancion": sancion_input,
                     "fecha": str(fecha_registro)
                 }
                 try:
@@ -261,4 +261,3 @@ else:
         else:
             df_historial = pd.DataFrame(datos_historial)
             col_id = "id" if "id" in df_historial.columns else ("Id" if "Id" in df_historial.columns else None)
-
