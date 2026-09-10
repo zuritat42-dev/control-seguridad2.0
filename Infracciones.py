@@ -127,7 +127,7 @@ def pdf_texto(valor):
     return str(valor or "").encode("latin-1", errors="replace").decode("latin-1")
 
 def generar_pdf(row):
-    """Genera el PDF con el diseño exacto original pero simplificado y en memoria."""
+    """Genera el PDF corregido sintácticamente para FPDF."""
     pdf = FPDF()
     pdf.add_page()
 
@@ -141,15 +141,15 @@ def generar_pdf(row):
     pdf.cell(0, 6, pdf_texto("Control de Gestion de Seguridad e Higiene"), ln=True, align="C")
     pdf.ln(3)
 
-    # Línea horizontal separadora roja
+    # Línea horizontal separadora roja (set_line_width corregido)
     pdf.set_draw_color(220, 80, 80)
-    pdf.set_linewidth(0.4)
+    pdf.set_line_width(0.4)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(5)
 
-    # 2. CAMPOS EN TABLA (Simplificados usando border='B' para la línea inferior)
+    # 2. CAMPOS EN TABLA
     pdf.set_draw_color(220, 100, 100)
-    pdf.set_linewidth(0.2)
+    pdf.set_line_width(0.2)
 
     def fila_pdf(etiqueta, valor):
         pdf.set_font("Arial", "B", 10)
@@ -157,7 +157,6 @@ def generar_pdf(row):
         pdf.cell(50, 8, pdf_texto(etiqueta), border="B")
         
         pdf.set_font("Arial", "", 10)
-        # Formateo de faltas separadas por coma
         if etiqueta == "Infracciones / Faltas:":
             val_clean = ", ".join([f.strip() for f in re.split(r"[\n,;]+", str(valor or "")) if f.strip()])
         else:
@@ -179,10 +178,10 @@ def generar_pdf(row):
     pdf.cell(0, 6, pdf_texto("Descripción Técnica de los Hechos:"), ln=True)
     pdf.ln(1)
 
-    # Cuadro de texto con borde rojo
+    # Cuadro de texto con borde rojo (set_line_width corregido)
     obs_texto = pdf_texto(row.get("observaciones") or "Sin observaciones registradas.")
     pdf.set_draw_color(200, 30, 30)
-    pdf.set_linewidth(0.3)
+    pdf.set_line_width(0.3)
     pdf.multi_cell(190, 7, f" {obs_texto}", border=1)
     pdf.ln(5)
 
@@ -330,7 +329,7 @@ with tab_reg:
             except Exception as e:
                 st.error(f"Error al guardar el informe: {e}")
 
-# PESTAÑA 2: HISTORIAL (OPTIMIZADO PARA CONTROL DE EGRESS)
+# PESTAÑA 2: HISTORIAL
 with tab_hist:
     st.subheader("Historial de Registros")
 
@@ -348,7 +347,7 @@ with tab_hist:
         if filtro != "Mostrar Todos":
             dfh = dfh[dfh["grupo_lista"].astype(str) == filtro]
 
-        # Paginación (10 elementos por página)
+        # Paginación
         TAMANO_PAGINA = 10
         total_paginas = max(1, (len(dfh) + TAMANO_PAGINA - 1) // TAMANO_PAGINA)
         pagina_actual = st.number_input("Página", min_value=1, max_value=total_paginas, value=1)
@@ -388,7 +387,7 @@ with tab_hist:
                     else:
                         st.caption("Sin evidencia fotográfica")
 
-                # Generación de PDF bajo demanda al hacer clic
+                # Generación de PDF bajo demanda
                 if st.button(f"📄 Preparar PDF de Informe #{rid}", key=f"btn_pdf_{rid}"):
                     with st.spinner("Generando documento..."):
                         try:
