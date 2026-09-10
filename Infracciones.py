@@ -2,94 +2,75 @@ import streamlit as st
 import pandas as pd
 import os
 import re
-import io
-from datetime import date, datetime
+from datetime import date
 from fpdf import FPDF
 from supabase import create_client, Client
-from PIL import Image
 
-
-# ============================================================
+# =====================================
 # CONFIGURACIÓN SUPABASE
-# ============================================================
+# =====================================
 
 SUPABASE_URL = "https://zwchdpugmqturznuxntc.supabase.co"
 
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3Y2hkcHVnbXF0dXJ6bnV4bnRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5OTM0MjYsImV4cCI6MjEwNDU2OTQyNn0.3ZPaWLTh2rWcnGvK_Cg5USgAOGxrB0dRd-AwYhEPK6s"
 
-supabase: Client = create_client(
-    SUPABASE_URL,
-    SUPABASE_KEY
-)
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# Nombre EXACTO del bucket de Supabase Storage
+STORAGE_BUCKET = "evidencias"
 
-# ============================================================
-# CONFIGURACIÓN GENERAL
-# ============================================================
+# =====================================
+# CONFIGURACIÓN DE SEGURIDAD
+# =====================================
 
 USUARIO_ADMIN = "Asistentes de maniobra"
 PASSWORD_ADMIN = "Seguridad2026"
 
+# =====================================
+# ARCHIVOS LOCALES
+# =====================================
+
 CHOFERES_EXTRAS_FILE = "choferes_extras.txt"
 
-# Nombre del bucket de Supabase Storage
-STORAGE_BUCKET = "evidencias"
-
-
-# ============================================================
-# CONFIGURACIÓN DE LA PÁGINA
-# ============================================================
+# =====================================
+# CONFIGURACIÓN STREAMLIT
+# =====================================
 
 st.set_page_config(
     page_title="Control de Seguridad Industrial",
     layout="wide"
 )
 
-
-# ============================================================
-# ESTADO DE SESIÓN
-# ============================================================
-
-if "autenticado" not in st.session_state:
-    st.session_state["autenticado"] = False
-
-
-# ============================================================
+# =====================================
 # FUNCIONES
-# ============================================================
+# =====================================
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=30)
 def consultar_infracciones_cache():
+    """
+    Consulta todos los informes de la tabla infracciones.
+    """
 
     try:
-
-        response = (
-            supabase
-            .table("Infracciones")
-            .select("*")
-            .order("id", desc=True)
-            .execute()
-        )
+        # IMPORTANTE:
+        # La tabla de Supabase se llama "infracciones"
+        response = supabase.table("infracciones").select("*").execute()
 
         return response.data
 
     except Exception as e:
-
         st.error(
             f"Error de conexión con la base de datos: {e}"
         )
-
         return []
 
 
-# ------------------------------------------------------------
-# CARGAR LISTAS TXT
-# ------------------------------------------------------------
-
 def cargar_lista_txt(ruta_archivo, nombres_defecto):
+    """
+    Carga nombres desde un archivo TXT.
+    """
 
     try:
-
         if os.path.exists(ruta_archivo):
 
             with open(
@@ -99,13 +80,12 @@ def cargar_lista_txt(ruta_archivo, nombres_defecto):
             ) as f:
 
                 return [
-                    line.strip()
-                    for line in f.readlines()
-                    if line.strip()
+                    linea.strip()
+                    for linea in f.readlines()
+                    if linea.strip()
                 ]
 
     except Exception as e:
-
         st.warning(
             f"No se pudo leer {ruta_archivo}: {e}"
         )
@@ -113,45 +93,35 @@ def cargar_lista_txt(ruta_archivo, nombres_defecto):
     return nombres_defecto
 
 
-# ------------------------------------------------------------
-# GUARDAR CHOFER EXTRA
-# ------------------------------------------------------------
-
 def guardar_chofer_extra(nombre):
+    """
+    Guarda un chofer adicional en el archivo local.
+    """
 
-    try:
+    with open(
+        CHOFERES_EXTRAS_FILE,
+        "a",
+        encoding="utf-8"
+    ) as f:
 
-        with open(
-            CHOFERES_EXTRAS_FILE,
-            "a",
-            encoding="utf-8"
-        ) as f:
+        f.write(nombre.strip() + "\n")
 
-            f.write(nombre + "\n")
-
-        return True
-
-    except Exception as e:
-
-        st.error(
-            f"No se pudo guardar el chofer: {e}"
-        )
-
-        return False
-
-
-# ------------------------------------------------------------
-# LIMPIAR NOMBRE PARA ARCHIVO
-# ------------------------------------------------------------
 
 def limpiar_nombre_archivo(texto):
+    """
+    Limpia nombres para utilizarlos dentro
+    de las rutas de Supabase Storage.
+    """
+
+    if not texto:
+        return "sin_nombre"
 
     texto = str(texto).strip()
 
-    # Reemplazar espacios
+    # Reemplazar espacios por _
     texto = texto.replace(" ", "_")
 
-    # Eliminar caracteres problemáticos
+    # Eliminar caracteres especiales
     texto = re.sub(
         r"[^A-Za-z0-9_\-]",
         "",
@@ -165,187 +135,13 @@ def limpiar_nombre_archivo(texto):
     return texto
 
 
-# ------------------------------------------------------------
-# COMPRIMIR FOTO
-# ------------------------------------------------------------
-
-def comprimir_fotografia(archivo):
-
-    try:
-
-        imagen = Image.open(archivo)
-
-        # Convertir a RGB para poder guardar como JPEG
-        if imagen.mode != "RGB":
-            imagen = imagen.convert("RGB")
-
-        # Reducir tamaño máximo.
-        # Esto ayuda muchísimo a ahorrar espacio en Supabase.
-        max_ancho = 1600
-        max_alto = 1600
-
-        imagen.thumbnail(
-            (max_ancho, max_alto),
-            Image.Resampling.LANCZOS
-        )
-
-        buffer = io.BytesIO()
-
-        imagen.save(
-            buffer,
-            format="JPEG",
-            quality=75,
-            optimize=True
-        )
-
-        buffer.seek(0)
-
-        return buffer.getvalue()
-
-    except Exception as e:
-
-        st.error(
-            f"No se pudo procesar la fotografía: {e}"
-        )
-
-        return None
-
-
-# ------------------------------------------------------------
-# SUBIR FOTO A SUPABASE STORAGE
-# ------------------------------------------------------------
-
-def subir_fotografia_supabase(
-    archivo,
-    operario,
-    fecha_evento
-):
-
-    if archivo is None:
-        return None
-
-    try:
-
-        # Comprimir
-        contenido = comprimir_fotografia(archivo)
-
-        if contenido is None:
-            return None
-
-        nombre_limpio = limpiar_nombre_archivo(
-            operario
-        )
-
-        fecha_archivo = str(
-            fecha_evento
-        ).replace("-", "")
-
-        # Fecha y hora únicas
-        identificador = datetime.now().strftime(
-            "%Y%m%d_%H%M%S_%f"
-        )
-
-        nombre_archivo = (
-            f"{fecha_archivo}_"
-            f"{nombre_limpio}_"
-            f"{identificador}.jpg"
-        )
-
-        ruta_storage = (
-            f"informes/{nombre_archivo}"
-        )
-
-        # Subir archivo
-        supabase.storage.from_(
-            STORAGE_BUCKET
-        ).upload(
-            ruta_storage,
-            contenido,
-            {
-                "content-type": "image/jpeg",
-                "upsert": "false"
-            }
-        )
-
-        # Obtener URL pública
-        url_publica = (
-            supabase
-            .storage
-            .from_(STORAGE_BUCKET)
-            .get_public_url(ruta_storage)
-        )
-
-        return {
-            "ruta": ruta_storage,
-            "url": url_publica
-        }
-
-    except Exception as e:
-
-        st.error(
-            "No se pudo subir la fotografía a "
-            f"Supabase Storage: {e}"
-        )
-
-        return None
-
-
-# ------------------------------------------------------------
-# ELIMINAR FOTO DE SUPABASE STORAGE
-# ------------------------------------------------------------
-
-def eliminar_fotografia_supabase(ruta):
-
-    if not ruta:
-        return
-
-    try:
-
-        supabase.storage.from_(
-            STORAGE_BUCKET
-        ).remove([ruta])
-
-    except Exception:
-        pass
-
-
-# ------------------------------------------------------------
-# OBTENER VALOR DE COLUMNA
-# ------------------------------------------------------------
-
-def obtener_valor(row, *nombres):
-
-    for nombre in nombres:
-
-        if nombre in row:
-
-            valor = row.get(nombre)
-
-            if valor is not None:
-
-                return valor
-
-    return ""
-
-
-# ------------------------------------------------------------
-# GENERAR PDF
-# ------------------------------------------------------------
-
 def generar_pdf_informe(row):
+    """
+    Genera el PDF del informe.
+    """
 
     pdf = FPDF()
-
     pdf.add_page()
-
-    pdf.set_auto_page_break(
-        auto=True,
-        margin=15
-    )
-
-    # --------------------------------------------------------
-    # TÍTULO
-    # --------------------------------------------------------
 
     pdf.set_font(
         "Arial",
@@ -354,96 +150,65 @@ def generar_pdf_informe(row):
     )
 
     pdf.cell(
-        0,
+        200,
         10,
         "Reporte de Incumplimiento de Seguridad e Higiene",
         ln=True,
         align="C"
     )
 
-    pdf.ln(8)
-
-    # --------------------------------------------------------
-    # DATOS
-    # --------------------------------------------------------
-
-    fecha = obtener_valor(
-        row,
-        "Fecha",
-        "fecha"
-    )
-
-    operario = obtener_valor(
-        row,
-        "Operario",
-        "operario"
-    )
-
-    grupo = obtener_valor(
-        row,
-        "grupo_lista",
-        "Grupo_lista"
-    )
-
-    creado = obtener_valor(
-        row,
-        "created_at",
-        "Created_at"
-    )
-
-    sancion = obtener_valor(
-        row,
-        "Sancion",
-        "sancion"
-    )
-
-    descripcion = obtener_valor(
-        row,
-        "Descripcion",
-        "descripcion"
-    )
+    pdf.ln(10)
 
     pdf.set_font(
         "Arial",
         "",
-        11
+        12
+    )
+
+    fecha = obtener_valor_columna(
+        row,
+        ["Fecha", "fecha"],
+        "N/A"
+    )
+
+    operario = obtener_valor_columna(
+        row,
+        ["Operario", "operario"],
+        "N/A"
+    )
+
+    grupo = obtener_valor_columna(
+        row,
+        ["grupo_lista", "Grupo_lista"],
+        "N/A"
     )
 
     pdf.cell(
-        0,
-        8,
-        f"Fecha del evento: {fecha}",
+        200,
+        10,
+        f"Fecha del Registro: {fecha}",
         ln=True
     )
 
     pdf.cell(
-        0,
-        8,
-        f"Conductor / Operario: {operario}",
+        200,
+        10,
+        f"Conductor/Operario: {operario}",
         ln=True
     )
 
     pdf.cell(
-        0,
-        8,
-        f"Lista de origen: {grupo}",
+        200,
+        10,
+        f"Lista de Origen: {grupo}",
         ln=True
     )
-
-    if creado:
-
-        pdf.cell(
-            0,
-            8,
-            f"Fecha y hora de carga: {creado}",
-            ln=True
-        )
 
     pdf.ln(5)
 
-    # --------------------------------------------------------
-    # DESVÍOS / FALTAS
-    # --------------------------------------------------------
+    # =====================================
+    # FALTAS
+    # =====================================
 
     pdf.set_font(
         "Arial",
@@ -452,8 +217,8 @@ def generar_pdf_informe(row):
     )
 
     pdf.cell(
-        0,
-        8,
+        200,
+        10,
         "Desvios Detectados:",
         ln=True
     )
@@ -461,54 +226,58 @@ def generar_pdf_informe(row):
     pdf.set_font(
         "Arial",
         "",
-        11
+        12
     )
 
-    faltas_data = obtener_valor(
+    faltas_data = obtener_valor_columna(
         row,
-        "Faltas",
-        "faltas"
+        ["Faltas", "faltas"],
+        ""
     )
 
     if isinstance(faltas_data, list):
 
         for falta in faltas_data:
 
-            pdf.multi_cell(
-                0,
-                7,
-                f"- {falta}"
+            pdf.cell(
+                200,
+                8,
+                f"- {falta}",
+                ln=True
             )
 
     else:
 
-        texto_faltas = str(
-            faltas_data
-        )
+        texto_faltas = str(faltas_data)
 
-        # Si Supabase devuelve una lista como texto
-        texto_faltas = texto_faltas.replace(
-            "[",
-            ""
-        ).replace(
-            "]",
-            ""
-        ).replace(
-            "'",
-            ""
-        )
+        # Si vienen separadas por coma
+        if "," in texto_faltas:
 
-        pdf.multi_cell(
-            0,
-            7,
-            f"- {texto_faltas}"
-        )
+            partes = texto_faltas.split(",")
+
+            for falta in partes:
+
+                pdf.cell(
+                    200,
+                    8,
+                    f"- {falta.strip()}",
+                    ln=True
+                )
+
+        else:
+
+            pdf.cell(
+                200,
+                8,
+                f"- {texto_faltas}",
+                ln=True
+            )
 
     pdf.ln(5)
 
-    # --------------------------------------------------------
+    # =====================================
     # SANCIÓN
-    # --------------------------------------------------------
+    # =====================================
 
     pdf.set_font(
         "Arial",
@@ -517,8 +286,8 @@ def generar_pdf_informe(row):
     )
 
     pdf.cell(
-        0,
-        8,
+        200,
+        10,
         "Sancion / Observaciones:",
         ln=True
     )
@@ -526,61 +295,20 @@ def generar_pdf_informe(row):
     pdf.set_font(
         "Arial",
         "",
-        11
+        12
     )
 
-    if sancion:
+    sancion_data = obtener_valor_columna(
+        row,
+        ["Sancion", "sancion"],
+        "Sin observaciones registradas."
+    )
 
-        pdf.multi_cell(
-            0,
-            7,
-            str(sancion)
-        )
-
-    else:
-
-        pdf.multi_cell(
-            0,
-            7,
-            "Sin observaciones registradas."
-        )
-
-    # --------------------------------------------------------
-    # DESCRIPCIÓN
-    # --------------------------------------------------------
-
-    if descripcion:
-
-        pdf.ln(5)
-
-        pdf.set_font(
-            "Arial",
-            "B",
-            12
-        )
-
-        pdf.cell(
-            0,
-            8,
-            "Descripcion de los Hechos:",
-            ln=True
-        )
-
-        pdf.set_font(
-            "Arial",
-            "",
-            11
-        )
-
-        pdf.multi_cell(
-            0,
-            7,
-            str(descripcion)
-        )
-
-    # --------------------------------------------------------
-    # SALIDA
-    # --------------------------------------------------------
+    pdf.multi_cell(
+        0,
+        10,
+        str(sancion_data)
+    )
 
     return pdf.output(
         dest="S"
@@ -590,9 +318,248 @@ def generar_pdf_informe(row):
     )
 
 
-# ============================================================
+def obtener_valor_columna(
+    row,
+    posibles_columnas,
+    valor_defecto=""
+):
+    """
+    Busca un valor probando diferentes
+    nombres de columnas.
+    """
+
+    for columna in posibles_columnas:
+
+        if columna in row:
+
+            valor = row[columna]
+
+            if valor is not None:
+
+                return valor
+
+    return valor_defecto
+
+
+def crear_ruta_foto(id_informe, operario):
+    """
+    Crea una ruta segura para la fotografía.
+
+    Ejemplo:
+
+    informes/25_Juan_Perez.jpg
+    """
+
+    nombre_limpio = limpiar_nombre_archivo(
+        operario
+    )
+
+    return (
+        f"informes/"
+        f"{id_informe}_"
+        f"{nombre_limpio}.jpg"
+    )
+
+
+def subir_fotografia(
+    archivo,
+    id_informe,
+    operario
+):
+    """
+    Sube la fotografía al bucket evidencias.
+    """
+
+    try:
+
+        # Importamos PIL solamente cuando
+        # realmente se necesita una fotografía.
+        from PIL import Image
+        import io
+
+        imagen = Image.open(archivo)
+
+        # Convertir a RGB
+        if imagen.mode != "RGB":
+            imagen = imagen.convert("RGB")
+
+        # Reducir fotografías demasiado grandes
+        imagen.thumbnail(
+            (1600, 1600)
+        )
+
+        # Comprimir a JPG
+        buffer = io.BytesIO()
+
+        imagen.save(
+            buffer,
+            format="JPEG",
+            quality=75,
+            optimize=True
+        )
+
+        contenido = buffer.getvalue()
+
+        # Crear ruta
+        ruta = crear_ruta_foto(
+            id_informe,
+            operario
+        )
+
+        # Subir a Supabase Storage
+        supabase.storage.from_(
+            STORAGE_BUCKET
+        ).upload(
+            ruta,
+            contenido,
+            file_options={
+                "content-type": "image/jpeg",
+                "upsert": "true"
+            }
+        )
+
+        return ruta
+
+    except Exception as e:
+
+        st.error(
+            f"No se pudo subir la fotografía: {e}"
+        )
+
+        return None
+
+
+def obtener_url_fotografia(ruta):
+    """
+    Obtiene la URL pública de una fotografía.
+    """
+
+    try:
+
+        resultado = supabase.storage.from_(
+            STORAGE_BUCKET
+        ).get_public_url(ruta)
+
+        return resultado
+
+    except Exception:
+
+        return None
+
+
+def eliminar_fotografia(
+    id_informe,
+    operario
+):
+    """
+    Elimina la fotografía correspondiente
+    al informe.
+    """
+
+    try:
+
+        ruta = crear_ruta_foto(
+            id_informe,
+            operario
+        )
+
+        supabase.storage.from_(
+            STORAGE_BUCKET
+        ).remove(
+            [ruta]
+        )
+
+        return True
+
+    except Exception as e:
+
+        st.warning(
+            f"No se pudo eliminar la fotografía: {e}"
+        )
+
+        return False
+
+
+def guardar_informe_en_bd(datos):
+    """
+    Guarda el informe en Supabase.
+
+    Primero intenta con los nombres de columnas
+    originales del programa.
+
+    Si la tabla utiliza nombres en minúscula,
+    intenta automáticamente con la versión
+    en minúscula.
+    """
+
+    errores = []
+
+    # =====================================
+    # PRIMER INTENTO
+    # Columnas originales
+    # =====================================
+
+    datos_mayusculas = {
+        "Operario": datos["operario"],
+        "grupo_lista": datos["grupo_lista"],
+        "Faltas": datos["faltas"],
+        "Sancion": datos["sancion"],
+        "Fecha": datos["fecha"]
+    }
+
+    try:
+
+        respuesta = supabase.table(
+            "infracciones"
+        ).insert(
+            datos_mayusculas
+        ).execute()
+
+        if respuesta.data:
+            return respuesta.data[0]
+
+    except Exception as e:
+
+        errores.append(str(e))
+
+    # =====================================
+    # SEGUNDO INTENTO
+    # Columnas minúsculas
+    # =====================================
+
+    datos_minusculas = {
+        "operario": datos["operario"],
+        "grupo_lista": datos["grupo_lista"],
+        "faltas": datos["faltas"],
+        "sancion": datos["sancion"],
+        "fecha": datos["fecha"]
+    }
+
+    try:
+
+        respuesta = supabase.table(
+            "infracciones"
+        ).insert(
+            datos_minusculas
+        ).execute()
+
+        if respuesta.data:
+            return respuesta.data[0]
+
+    except Exception as e:
+
+        errores.append(str(e))
+
+    # Si llegamos acá, ninguno funcionó
+    raise Exception(
+        "No se pudo guardar el informe.\n\n"
+        + "\n".join(errores)
+    )
+
+
+# =====================================
 # CARGA DE LISTAS
-# ============================================================
+# =====================================
 
 LISTA_T1 = cargar_lista_txt(
     "choferes_t1.txt",
@@ -619,10 +586,18 @@ LISTA_T2_SANTIAGO = cargar_lista_txt(
     []
 )
 
+# =====================================
+# SESIÓN
+# =====================================
 
-# ============================================================
+if "autenticado" not in st.session_state:
+
+    st.session_state["autenticado"] = False
+
+
+# =====================================
 # LOGIN
-# ============================================================
+# =====================================
 
 def login():
 
@@ -630,11 +605,7 @@ def login():
         "Acceso al Sistema de Seguridad"
     )
 
-    st.write(
-        "Ingrese sus credenciales para continuar."
-    )
-
-    user = st.text_input(
+    usuario = st.text_input(
         "Usuario"
     )
 
@@ -643,15 +614,11 @@ def login():
         type="password"
     )
 
-    if st.button(
-        "Ingresar",
-        use_container_width=True
-    ):
+    if st.button("Ingresar"):
 
         if (
-            user == USUARIO_ADMIN
-            and
-            password == PASSWORD_ADMIN
+            usuario == USUARIO_ADMIN
+            and password == PASSWORD_ADMIN
         ):
 
             st.session_state[
@@ -667,9 +634,9 @@ def login():
             )
 
 
-# ============================================================
+# =====================================
 # APLICACIÓN PRINCIPAL
-# ============================================================
+# =====================================
 
 if not st.session_state["autenticado"]:
 
@@ -677,21 +644,16 @@ if not st.session_state["autenticado"]:
 
 else:
 
-    # ========================================================
+    # =====================================
     # SIDEBAR
-    # ========================================================
+    # =====================================
 
     st.sidebar.title(
         "Navegación"
     )
 
-    st.sidebar.success(
-        "Sistema autenticado"
-    )
-
     if st.sidebar.button(
-        "Cerrar Sesión",
-        use_container_width=True
+        "Cerrar Sesión"
     ):
 
         st.session_state[
@@ -700,9 +662,9 @@ else:
 
         st.rerun()
 
-    # ========================================================
+    # =====================================
     # TÍTULO
-    # ========================================================
+    # =====================================
 
     st.title(
         "Sistema de Gestión de Seguridad e Higiene"
@@ -712,13 +674,15 @@ else:
         "Registro permanente de informes y evidencias fotográficas."
     )
 
-    # ========================================================
-    # PANEL DE ALERTAS
-    # ========================================================
+    # =====================================
+    # CONSULTAR DATOS
+    # =====================================
 
-    datos_alertas = (
-        consultar_infracciones_cache()
-    )
+    datos_alertas = consultar_infracciones_cache()
+
+    # =====================================
+    # PANEL DE ALERTAS
+    # =====================================
 
     if datos_alertas:
 
@@ -726,26 +690,26 @@ else:
             datos_alertas
         )
 
-        col_op = None
+        col_operario = None
 
         if "Operario" in df_alertas.columns:
 
-            col_op = "Operario"
+            col_operario = "Operario"
 
         elif "operario" in df_alertas.columns:
 
-            col_op = "operario"
+            col_operario = "operario"
 
         if (
             not df_alertas.empty
-            and
-            col_op
+            and col_operario
         ):
 
             conteo_faltas = (
                 df_alertas[
-                    col_op
-                ].value_counts()
+                    col_operario
+                ]
+                .value_counts()
             )
 
             reincidentes = (
@@ -773,23 +737,22 @@ else:
                             f"**{total} informes**."
                         )
 
-    # ========================================================
+    # =====================================
     # PESTAÑAS
-    # ========================================================
+    # =====================================
 
-    tab_reg, tab_hist = st.tabs(
+    tab_registro, tab_historial = st.tabs(
         [
             "Registro de Incidencias",
             "Historial de Informes"
         ]
     )
 
+    # =====================================
+    # REGISTRO
+    # =====================================
 
-    # ========================================================
-    # REGISTRO DE INCIDENCIAS
-    # ========================================================
-
-    with tab_reg:
+    with tab_registro:
 
         st.subheader(
             "Formulario de Registro"
@@ -808,13 +771,11 @@ else:
         )
 
         operario = ""
-
         grupo_pertenencia = ""
 
-
-        # ----------------------------------------------------
+        # =====================================
         # T1
-        # ----------------------------------------------------
+        # =====================================
 
         if opcion_seleccionada == "Choferes de T1":
 
@@ -830,13 +791,13 @@ else:
             else:
 
                 st.warning(
-                    "No se encontraron choferes de T1."
+                    "No se encontraron nombres "
+                    "en choferes_t1.txt"
                 )
 
-
-        # ----------------------------------------------------
+        # =====================================
         # T2
-        # ----------------------------------------------------
+        # =====================================
 
         elif opcion_seleccionada == "Choferes de T2":
 
@@ -852,13 +813,13 @@ else:
             else:
 
                 st.warning(
-                    "No se encontraron choferes de T2."
+                    "No se encontraron nombres "
+                    "en choferes_t2.txt"
                 )
 
-
-        # ----------------------------------------------------
+        # =====================================
         # T2 CATAMARCA
-        # ----------------------------------------------------
+        # =====================================
 
         elif opcion_seleccionada == "Choferes de T2 Catamarca":
 
@@ -874,13 +835,13 @@ else:
             else:
 
                 st.warning(
-                    "No se encontraron choferes de T2 Catamarca."
+                    "No se encontraron nombres "
+                    "en choferes_t2_catamarca.txt"
                 )
 
-
-        # ----------------------------------------------------
+        # =====================================
         # T2 LA RIOJA
-        # ----------------------------------------------------
+        # =====================================
 
         elif opcion_seleccionada == "Choferes de T2 La Rioja":
 
@@ -896,13 +857,13 @@ else:
             else:
 
                 st.warning(
-                    "No se encontraron choferes de T2 La Rioja."
+                    "No se encontraron nombres "
+                    "en choferes_t2_larioja.txt"
                 )
 
-
-        # ----------------------------------------------------
+        # =====================================
         # T2 SANTIAGO
-        # ----------------------------------------------------
+        # =====================================
 
         elif opcion_seleccionada == "Choferes de T2 Santiago Del Estero":
 
@@ -920,23 +881,23 @@ else:
             else:
 
                 st.warning(
-                    "No se encontraron choferes de T2 Santiago Del Estero."
+                    "No se encontraron nombres "
+                    "en choferes_t2_santiago.txt"
                 )
 
-
-        # ----------------------------------------------------
-        # CHOFERES EXTRAS
-        # ----------------------------------------------------
+        # =====================================
+        # EXTRAS
+        # =====================================
 
         elif opcion_seleccionada == "Cargar nombres apartes":
 
-            grupo_pertenencia = (
-                "Carga Aparte / Extra"
-            )
-
             st.info(
                 "Módulo para registrar choferes "
-                "fuera de las listas principales."
+                "fuera de las listas T1/T2."
+            )
+
+            grupo_pertenencia = (
+                "Carga Aparte / Extra"
             )
 
             with st.expander(
@@ -953,22 +914,22 @@ else:
 
                     if nuevo_nombre.strip() != "":
 
-                        if guardar_chofer_extra(
+                        guardar_chofer_extra(
                             nuevo_nombre.strip()
-                        ):
+                        )
 
-                            st.success(
-                                f"{nuevo_nombre} agregado con éxito."
-                            )
+                        st.success(
+                            f"{nuevo_nombre} "
+                            "agregado con éxito."
+                        )
 
-                            st.rerun()
+                        st.rerun()
 
                     else:
 
                         st.error(
                             "El nombre no puede estar vacío."
                         )
-
 
             lista_extras = cargar_lista_txt(
                 CHOFERES_EXTRAS_FILE,
@@ -988,10 +949,9 @@ else:
                     "No hay choferes cargados."
                 )
 
-
-        # ----------------------------------------------------
-        # DATOS DEL OPERARIO
-        # ----------------------------------------------------
+        # =====================================
+        # INFORMACIÓN DEL OPERARIO
+        # =====================================
 
         st.write("---")
 
@@ -1000,10 +960,9 @@ else:
             f"**Lista de Origen:** {grupo_pertenencia}"
         )
 
-
-        # ====================================================
-        # FALTAS
-        # ====================================================
+        # =====================================
+        # TIPOS DE INCUMPLIMIENTO
+        # =====================================
 
         faltas = st.multiselect(
             "Tipos de Incumplimiento",
@@ -1017,230 +976,181 @@ else:
                 "Estaciona en zona prohibida",
                 "No posee alarma de retroceso",
                 "No espera a ser asistido en la Maniobra de reversa",
-                "Interaccion Hombre-Maquina",
-                "Exceso de velocidad"
+                "Exceso de velocidad",
+                "Interaccion Hombre-Maquina"
             ]
         )
 
-
-        # ====================================================
-        # DESCRIPCIÓN
-        # ====================================================
-
-        descripcion_input = st.text_area(
-            "Descripción Técnica de los Hechos",
-            height=120
-        )
-
-
-        # ====================================================
+        # =====================================
         # SANCIÓN
-        # ====================================================
+        # =====================================
 
         sancion_input = st.text_area(
-            "Sanción aplicada / Detalles de la medida",
-            height=100
+            "Sanción aplicada / Detalles de la medida"
         )
 
-
-        # ====================================================
+        # =====================================
         # FECHA
-        # ====================================================
+        # =====================================
 
         fecha_registro = st.date_input(
             "Fecha del Evento",
             date.today()
         )
 
+        # =====================================
+        # FOTOGRAFÍA
+        # =====================================
 
-        # ====================================================
-        # FOTO
-        # ====================================================
+        st.write("---")
 
-        foto = st.file_uploader(
-            "Adjuntar Evidencia Fotográfica",
+        st.subheader(
+            "Evidencia Fotográfica"
+        )
+
+        fotografia = st.file_uploader(
+            "Adjuntar fotografía del incidente",
             type=[
                 "jpg",
                 "jpeg",
                 "png"
-            ],
-            help=(
-                "La fotografía será comprimida automáticamente "
-                "antes de almacenarse para ahorrar espacio."
-            )
+            ]
         )
 
-
-        if foto:
+        if fotografia:
 
             st.image(
-                foto,
+                fotografia,
                 caption="Vista previa de la evidencia",
-                use_container_width=True
+                width=400
             )
 
-
-        # ====================================================
+        # =====================================
         # GUARDAR INFORME
-        # ====================================================
+        # =====================================
 
         if st.button(
             "💾 Guardar Informe",
-            use_container_width=True
+            type="primary"
         ):
 
             if not operario:
 
                 st.error(
-                    "Por favor, seleccione un operario/chofer válido."
+                    "Por favor, seleccione "
+                    "un operario/chofer válido."
                 )
 
             elif not faltas:
 
                 st.error(
-                    "Debe seleccionar al menos un tipo "
-                    "de incumplimiento."
+                    "Debe seleccionar al menos "
+                    "un tipo de incumplimiento."
                 )
 
             else:
 
-                with st.spinner(
-                    "Guardando informe..."
-                ):
+                datos = {
 
-                    foto_info = None
+                    "operario": operario,
 
-                    # ------------------------------------------------
-                    # SUBIR FOTO
-                    # ------------------------------------------------
+                    "grupo_lista": grupo_pertenencia,
 
-                    if foto:
+                    "faltas": faltas,
 
-                        foto_info = (
-                            subir_fotografia_supabase(
-                                foto,
-                                operario,
-                                fecha_registro
-                            )
+                    "sancion": sancion_input,
+
+                    "fecha": str(
+                        fecha_registro
+                    )
+                }
+
+                try:
+
+                    # =====================================
+                    # GUARDAR INFORME
+                    # =====================================
+
+                    registro_creado = (
+                        guardar_informe_en_bd(
+                            datos
                         )
-
-                        if foto_info is None:
-
-                            st.error(
-                                "El informe no se guardó porque "
-                                "la fotografía no pudo almacenarse."
-                            )
-
-                            st.stop()
-
-
-                    # ------------------------------------------------
-                    # FECHA Y HORA
-                    # ------------------------------------------------
-
-                    fecha_hora_actual = (
-                        datetime.now().isoformat()
                     )
 
+                    # Obtener ID
+                    id_informe = obtener_valor_columna(
+                        registro_creado,
+                        ["id", "ID", "Id"],
+                        None
+                    )
 
-                    # ------------------------------------------------
-                    # DATOS
-                    # ------------------------------------------------
+                    # =====================================
+                    # SUBIR FOTO
+                    # =====================================
 
-                    datos_informe = {
+                    foto_guardada = False
 
-                        "Operario": operario,
+                    if (
+                        fotografia
+                        and id_informe is not None
+                    ):
 
-                        "grupo_lista": (
-                            grupo_pertenencia
-                        ),
-
-                        "Faltas": faltas,
-
-                        "Descripcion": (
-                            descripcion_input
-                        ),
-
-                        "Sancion": (
-                            sancion_input
-                        ),
-
-                        "Fecha": (
-                            str(fecha_registro)
-                        ),
-
-                        "created_at": (
-                            fecha_hora_actual
-                        )
-                    }
-
-
-                    # ------------------------------------------------
-                    # DATOS DE FOTO
-                    # ------------------------------------------------
-
-                    if foto_info:
-
-                        datos_informe[
-                            "foto_path"
-                        ] = foto_info["ruta"]
-
-                        datos_informe[
-                            "foto_url"
-                        ] = foto_info["url"]
-
-
-                    # ------------------------------------------------
-                    # INSERTAR EN SUPABASE
-                    # ------------------------------------------------
-
-                    try:
-
-                        (
-                            supabase
-                            .table("Infracciones")
-                            .insert(datos_informe)
-                            .execute()
+                        ruta_foto = subir_fotografia(
+                            fotografia,
+                            id_informe,
+                            operario
                         )
 
-                        st.cache_data.clear()
+                        if ruta_foto:
 
-                        st.success(
-                            "✅ ¡Informe registrado exitosamente!"
-                        )
+                            foto_guardada = True
 
-                        st.info(
-                            "El informe y la evidencia "
-                            "quedaron almacenados en Supabase."
-                        )
+                    # =====================================
+                    # MENSAJE FINAL
+                    # =====================================
 
-                        st.rerun()
+                    if fotografia:
 
+                        if foto_guardada:
 
-                    except Exception as error_db:
-
-                        # Si falla la base de datos,
-                        # intentar eliminar la foto que ya se subió
-                        if foto_info:
-
-                            eliminar_fotografia_supabase(
-                                foto_info["ruta"]
+                            st.success(
+                                "✅ Informe y fotografía "
+                                "guardados correctamente."
                             )
 
-                        st.error(
-                            "Error al guardar en la base de datos:"
+                        else:
+
+                            st.warning(
+                                "⚠️ El informe fue guardado, "
+                                "pero la fotografía no pudo "
+                                "subirse."
+                            )
+
+                    else:
+
+                        st.success(
+                            "✅ Informe registrado "
+                            "exitosamente."
                         )
 
-                        st.code(
-                            str(error_db)
-                        )
+                    # Limpiar caché
+                    st.cache_data.clear()
 
+                    st.rerun()
 
-    # ========================================================
+                except Exception as error_db:
+
+                    st.error(
+                        "❌ Error al guardar el informe "
+                        f"en la base de datos:\n\n"
+                        f"{error_db}"
+                    )
+
+    # =====================================
     # HISTORIAL
-    # ========================================================
+    # =====================================
 
-    with tab_hist:
+    with tab_historial:
 
         st.subheader(
             "Historial de Registros"
@@ -1262,459 +1172,347 @@ else:
                 datos_historial
             )
 
-
-            # ------------------------------------------------
+            # =====================================
             # IDENTIFICAR COLUMNAS
-            # ------------------------------------------------
+            # =====================================
 
             col_id = None
 
             if "id" in df_historial.columns:
-
                 col_id = "id"
 
+            elif "ID" in df_historial.columns:
+                col_id = "ID"
+
             elif "Id" in df_historial.columns:
-
                 col_id = "Id"
-
-
-            col_creado = None
-
-            if "created_at" in df_historial.columns:
-
-                col_creado = "created_at"
-
-            elif "Created_at" in df_historial.columns:
-
-                col_creado = "Created_at"
-
-
-            col_grupo = None
-
-            if "grupo_lista" in df_historial.columns:
-
-                col_grupo = "grupo_lista"
-
-            elif "Grupo_lista" in df_historial.columns:
-
-                col_grupo = "Grupo_lista"
-
 
             col_operario = None
 
             if "Operario" in df_historial.columns:
-
                 col_operario = "Operario"
 
             elif "operario" in df_historial.columns:
-
                 col_operario = "operario"
 
+            col_grupo = None
 
-            # ------------------------------------------------
-            # FILTRO DE GRUPO
-            # ------------------------------------------------
+            if "grupo_lista" in df_historial.columns:
+                col_grupo = "grupo_lista"
 
-            opciones_filtro = [
-                "Mostrar Todos",
-                "T1",
-                "T2",
-                "T2 Catamarca",
-                "T2 La Rioja",
-                "T2 Santiago Del Estero",
-                "Carga Aparte / Extra"
-            ]
+            elif "Grupo_lista" in df_historial.columns:
+                col_grupo = "Grupo_lista"
 
-            filtro_grupo = st.selectbox(
-                "Filtrar historial por grupo",
-                opciones_filtro
-            )
+            # =====================================
+            # FILTRO
+            # =====================================
 
+            if col_grupo:
 
-            df_mostrar = (
-                df_historial.copy()
-            )
+                grupos_disponibles = sorted(
+                    [
+                        str(x)
+                        for x in df_historial[
+                            col_grupo
+                        ]
+                        .dropna()
+                        .unique()
+                    ]
+                )
 
+                filtro_grupo = st.selectbox(
+                    "Filtrar por grupo:",
+                    [
+                        "Mostrar Todos"
+                    ] + grupos_disponibles
+                )
 
-            if (
-                filtro_grupo != "Mostrar Todos"
-                and
-                col_grupo
-            ):
+                if filtro_grupo != "Mostrar Todos":
 
-                df_mostrar = (
-                    df_mostrar[
-                        df_mostrar[
+                    df_historial = df_historial[
+                        df_historial[
                             col_grupo
                         ].astype(str)
                         == filtro_grupo
                     ]
+
+            # =====================================
+            # MOSTRAR REGISTROS
+            # =====================================
+
+            if df_historial.empty:
+
+                st.info(
+                    "No hay informes para el filtro seleccionado."
                 )
 
+            else:
 
-            # ------------------------------------------------
-            # ORDENAR
-            # ------------------------------------------------
-
-            if col_creado:
-
-                try:
-
-                    df_mostrar = (
-                        df_mostrar
-                        .sort_values(
-                            by=col_creado,
-                            ascending=False
-                        )
-                    )
-
-                except Exception:
-
-                    pass
-
-
-            # ------------------------------------------------
-            # CONTADOR
-            # ------------------------------------------------
-
-            st.write(
-                f"**Informes encontrados: {len(df_mostrar)}**"
-            )
-
-
-            # ------------------------------------------------
-            # MOSTRAR INFORMES
-            # ------------------------------------------------
-
-            for indice, row in df_mostrar.iterrows():
-
+                # Mostrar primero los últimos
+                # registros
                 if col_id:
 
-                    identificador = row.get(
-                        col_id
+                    try:
+
+                        df_historial = (
+                            df_historial
+                            .sort_values(
+                                by=col_id,
+                                ascending=False
+                            )
+                        )
+
+                    except Exception:
+                        pass
+
+                for _, row in df_historial.iterrows():
+
+                    id_informe = obtener_valor_columna(
+                        row,
+                        ["id", "ID", "Id"],
+                        None
                     )
 
-                else:
-
-                    identificador = indice
-
-
-                operario_hist = obtener_valor(
-                    row,
-                    "Operario",
-                    "operario"
-                )
-
-                fecha_hist = obtener_valor(
-                    row,
-                    "Fecha",
-                    "fecha"
-                )
-
-                grupo_hist = obtener_valor(
-                    row,
-                    "grupo_lista",
-                    "Grupo_lista"
-                )
-
-                faltas_hist = obtener_valor(
-                    row,
-                    "Faltas",
-                    "faltas"
-                )
-
-                descripcion_hist = obtener_valor(
-                    row,
-                    "Descripcion",
-                    "descripcion"
-                )
-
-                sancion_hist = obtener_valor(
-                    row,
-                    "Sancion",
-                    "sancion"
-                )
-
-                foto_url_hist = obtener_valor(
-                    row,
-                    "foto_url",
-                    "Foto_url"
-                )
-
-                foto_path_hist = obtener_valor(
-                    row,
-                    "foto_path",
-                    "Foto_Path"
-                )
-
-                creado_hist = obtener_valor(
-                    row,
-                    "created_at",
-                    "Created_at"
-                )
-
-
-                # ------------------------------------------------
-                # EXPANDER
-                # ------------------------------------------------
-
-                titulo = (
-                    f"📋 {fecha_hist} | "
-                    f"{operario_hist}"
-                )
-
-                with st.expander(
-                    titulo
-                ):
-
-                    col1, col2 = st.columns(
-                        [2, 1]
+                    operario = obtener_valor_columna(
+                        row,
+                        ["Operario", "operario"],
+                        "N/A"
                     )
 
-
-                    # --------------------------------------------
-                    # INFORMACIÓN
-                    # --------------------------------------------
-
-                    with col1:
-
-                        st.markdown(
-                            f"**Conductor / Operario:** "
-                            f"{operario_hist}"
-                        )
-
-                        st.markdown(
-                            f"**Fecha del evento:** "
-                            f"{fecha_hist}"
-                        )
-
-                        st.markdown(
-                            f"**Lista de origen:** "
-                            f"{grupo_hist}"
-                        )
-
-                        if creado_hist:
-
-                            st.markdown(
-                                f"**Fecha y hora de carga:** "
-                                f"{creado_hist}"
-                            )
-
-
-                        st.markdown(
-                            "**Incumplimientos:**"
-                        )
-
-
-                        if isinstance(
-                            faltas_hist,
-                            list
-                        ):
-
-                            for falta in faltas_hist:
-
-                                st.markdown(
-                                    f"- {falta}"
-                                )
-
-                        else:
-
-                            texto_faltas = str(
-                                faltas_hist
-                            )
-
-                            st.markdown(
-                                texto_faltas
-                            )
-
-
-                        if descripcion_hist:
-
-                            st.markdown(
-                                "**Descripción Técnica:**"
-                            )
-
-                            st.write(
-                                descripcion_hist
-                            )
-
-
-                        if sancion_hist:
-
-                            st.markdown(
-                                "**Sanción / Medida:**"
-                            )
-
-                            st.write(
-                                sancion_hist
-                            )
-
-
-                    # --------------------------------------------
-                    # FOTOGRAFÍA
-                    # --------------------------------------------
-
-                    with col2:
-
-                        if foto_url_hist:
-
-                            try:
-
-                                st.image(
-                                    foto_url_hist,
-                                    caption="Evidencia fotográfica",
-                                    use_container_width=True
-                                )
-
-                            except Exception:
-
-                                st.warning(
-                                    "No se pudo mostrar la fotografía."
-                                )
-
-                        else:
-
-                            st.info(
-                                "Este informe no tiene "
-                                "evidencia fotográfica."
-                            )
-
-
-                    st.write("---")
-
-
-                    # --------------------------------------------
-                    # BOTONES
-                    # --------------------------------------------
-
-                    col_pdf, col_eliminar = st.columns(
-                        2
+                    grupo = obtener_valor_columna(
+                        row,
+                        ["grupo_lista", "Grupo_lista"],
+                        "N/A"
                     )
 
+                    fecha = obtener_valor_columna(
+                        row,
+                        ["Fecha", "fecha"],
+                        "N/A"
+                    )
 
-                    # --------------------------------------------
-                    # PDF
-                    # --------------------------------------------
+                    faltas_data = obtener_valor_columna(
+                        row,
+                        ["Faltas", "faltas"],
+                        ""
+                    )
 
-                    with col_pdf:
+                    sancion = obtener_valor_columna(
+                        row,
+                        ["Sancion", "sancion"],
+                        ""
+                    )
 
-                        try:
+                    # =====================================
+                    # EXPANDER
+                    # =====================================
 
-                            pdf_bytes = (
-                                generar_pdf_informe(
-                                    row
-                                )
-                            )
+                    titulo = (
+                        f"📋 Informe #{id_informe} - "
+                        f"{operario} - {fecha}"
+                    )
 
-                            st.download_button(
-                                label="📄 Descargar PDF",
-                                data=pdf_bytes,
-                                file_name=(
-                                    f"Informe_{identificador}.pdf"
-                                ),
-                                mime="application/pdf",
-                                key=(
-                                    f"pdf_{identificador}"
-                                ),
-                                use_container_width=True
-                            )
+                    with st.expander(titulo):
 
-                        except Exception as e:
-
-                            st.error(
-                                f"No se pudo generar el PDF: {e}"
-                            )
-
-
-                    # --------------------------------------------
-                    # ELIMINAR
-                    # --------------------------------------------
-
-                    with col_eliminar:
-
-                        confirmar = st.checkbox(
-                            "Confirmar eliminación",
-                            key=(
-                                f"confirmar_{identificador}"
-                            )
+                        col1, col2 = st.columns(
+                            [2, 1]
                         )
 
-                        if st.button(
-                            "🗑️ Eliminar Informe",
-                            key=(
-                                f"eliminar_{identificador}"
-                            ),
-                            use_container_width=True
-                        ):
+                        with col1:
 
-                            if not confirmar:
+                            st.markdown(
+                                f"**Fecha:** {fecha}"
+                            )
 
-                                st.warning(
-                                    "Marque primero "
-                                    "'Confirmar eliminación'."
+                            st.markdown(
+                                f"**Operario:** {operario}"
+                            )
+
+                            st.markdown(
+                                f"**Grupo:** {grupo}"
+                            )
+
+                            st.markdown(
+                                "**Incumplimientos:**"
+                            )
+
+                            if isinstance(
+                                faltas_data,
+                                list
+                            ):
+
+                                for falta in faltas_data:
+
+                                    st.write(
+                                        f"• {falta}"
+                                    )
+
+                            else:
+
+                                texto_faltas = str(
+                                    faltas_data
+                                )
+
+                                if "," in texto_faltas:
+
+                                    for falta in texto_faltas.split(","):
+
+                                        st.write(
+                                            f"• {falta.strip()}"
+                                        )
+
+                                else:
+
+                                    st.write(
+                                        f"• {texto_faltas}"
+                                    )
+
+                            st.markdown(
+                                "**Sanción / Observaciones:**"
+                            )
+
+                            if sancion:
+
+                                st.write(
+                                    sancion
                                 )
 
                             else:
 
-                                try:
+                                st.write(
+                                    "Sin observaciones."
+                                )
 
-                                    # ----------------------------
-                                    # ELIMINAR DE BASE DE DATOS
-                                    # ----------------------------
+                        # =====================================
+                        # FOTO
+                        # =====================================
 
-                                    if col_id:
+                        with col2:
 
-                                        (
-                                            supabase
-                                            .table("Infracciones")
-                                            .delete()
-                                            .eq(
-                                                col_id,
-                                                identificador
-                                            )
-                                            .execute()
-                                        )
+                            if id_informe is not None:
 
-                                    else:
+                                ruta_foto = crear_ruta_foto(
+                                    id_informe,
+                                    operario
+                                )
 
-                                        st.error(
-                                            "No se encontró la columna ID."
-                                        )
+                                url_foto = (
+                                    obtener_url_fotografia(
+                                        ruta_foto
+                                    )
+                                )
 
-                                        st.stop()
+                                if url_foto:
 
-
-                                    # ----------------------------
-                                    # ELIMINAR FOTO
-                                    # ----------------------------
-
-                                    if foto_path_hist:
-
-                                        eliminar_fotografia_supabase(
-                                            foto_path_hist
-                                        )
-
-
-                                    st.cache_data.clear()
-
-                                    st.success(
-                                        "Informe eliminado correctamente."
+                                    st.image(
+                                        url_foto,
+                                        caption="Evidencia fotográfica",
+                                        use_container_width=True
                                     )
 
-                                    st.rerun()
+                                else:
 
+                                    st.caption(
+                                        "No hay evidencia "
+                                        "fotográfica asociada."
+                                    )
 
-                                except Exception as error_eliminar:
+                        # =====================================
+                        # BOTONES
+                        # =====================================
+
+                        col_pdf, col_eliminar = st.columns(
+                            2
+                        )
+
+                        # =====================================
+                        # PDF
+                        # =====================================
+
+                        with col_pdf:
+
+                            try:
+
+                                pdf_bytes = (
+                                    generar_pdf_informe(
+                                        row
+                                    )
+                                )
+
+                                nombre_pdf = (
+                                    f"Informe_{id_informe}.pdf"
+                                )
+
+                                st.download_button(
+                                    label="📄 Descargar PDF",
+                                    data=pdf_bytes,
+                                    file_name=nombre_pdf,
+                                    mime="application/pdf",
+                                    key=f"pdf_{id_informe}"
+                                )
+
+                            except Exception as e:
+
+                                st.error(
+                                    f"No se pudo generar el PDF: {e}"
+                                )
+
+                        # =====================================
+                        # ELIMINAR
+                        # =====================================
+
+                        with col_eliminar:
+
+                            if st.button(
+                                "🗑️ Eliminar Informe",
+                                key=f"eliminar_{id_informe}"
+                            ):
+
+                                if id_informe is None:
 
                                     st.error(
-                                        "No se pudo eliminar el informe:"
+                                        "No se encontró el ID "
+                                        "del informe."
                                     )
 
-                                    st.code(
-                                        str(error_eliminar)
-                                    )
+                                else:
 
+                                    try:
 
-# ============================================================
-# FIN DEL PROGRAMA
-# ============================================================
+                                        # =====================================
+                                        # ELIMINAR FOTO
+                                        # =====================================
+
+                                        eliminar_fotografia(
+                                            id_informe,
+                                            operario
+                                        )
+
+                                        # =====================================
+                                        # ELIMINAR REGISTRO
+                                        # =====================================
+
+                                        # Probar primero
+                                        # con id normal
+                                        supabase.table(
+                                            "infracciones"
+                                        ).delete().eq(
+                                            "id",
+                                            id_informe
+                                        ).execute()
+
+                                        st.success(
+                                            "Informe eliminado "
+                                            "correctamente."
+                                        )
+
+                                        st.cache_data.clear()
+
+                                        st.rerun()
+
+                                    except Exception as e:
+
+                                        st.error(
+                                            "No se pudo eliminar "
+                                            f"el informe: {e}"
+                                        )
