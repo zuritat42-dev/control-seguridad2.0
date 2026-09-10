@@ -100,7 +100,7 @@ def subir_foto(archivo, operario, fecha):
     if ext not in [".jpg", ".jpeg", ".png"]:
         raise ValueError("La evidencia debe ser JPG, JPEG o PNG.")
 
-    # Optimización y reducción de peso de la imagen
+    # Reducción y compresión de imagen en memoria
     img = Image.open(archivo)
     if img.mode != "RGB":
         img = img.convert("RGB")
@@ -127,60 +127,80 @@ def pdf_texto(valor):
     return str(valor or "").encode("latin-1", errors="replace").decode("latin-1")
 
 def generar_pdf(row):
-    """Genera el PDF en memoria solo cuando el usuario lo solicita."""
+    """Genera el PDF con el diseño exacto original pero simplificado y en memoria."""
     pdf = FPDF()
     pdf.add_page()
+
+    # 1. ENCABEZADO
     pdf.set_font("Arial", "B", 16)
+    pdf.set_text_color(200, 30, 30)  # Rojo principal
+    pdf.cell(0, 8, pdf_texto("INFORME DE INCIDENCIA DE SEGURIDAD INDUSTRIAL"), ln=True, align="C")
 
-    # Encabezado
-    pdf.cell(190, 10, pdf_texto("Reporte de Incumplimiento de Seguridad e Higiene"), ln=True, align="C")
-    pdf.ln(8)
+    pdf.set_font("Arial", "I", 10)
+    pdf.set_text_color(100, 100, 100)  # Gris subtítulo
+    pdf.cell(0, 6, pdf_texto("Control de Gestion de Seguridad e Higiene"), ln=True, align="C")
+    pdf.ln(3)
 
-    # Datos principales
-    pdf.set_font("Arial", "", 11)
-    pdf.cell(190, 7, pdf_texto(f"Fecha del Registro: {row.get('fecha', 'N/A')}"), ln=True)
-    pdf.cell(190, 7, pdf_texto(f"Conductor/Operario: {row.get('operario', 'N/A')}"), ln=True)
-    pdf.cell(190, 7, pdf_texto(f"Lista de Origen: {row.get('grupo_lista', 'N/A')}"), ln=True)
+    # Línea horizontal separadora roja
+    pdf.set_draw_color(220, 80, 80)
+    pdf.set_linewidth(0.4)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(5)
 
-    # Desvíos
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(190, 8, pdf_texto("Desvíos Detectados:"), ln=True)
-    pdf.set_font("Arial", "", 11)
+    # 2. CAMPOS EN TABLA (Simplificados usando border='B' para la línea inferior)
+    pdf.set_draw_color(220, 100, 100)
+    pdf.set_linewidth(0.2)
 
-    faltas_data = row.get("faltas", "")
-    for falta in re.split(r"[\n,;]+", str(faltas_data or "")):
-        if falta.strip():
-            pdf.cell(190, 6, pdf_texto(f"- {falta.strip()}"), ln=True)
+    def fila_pdf(etiqueta, valor):
+        pdf.set_font("Arial", "B", 10)
+        pdf.set_text_color(30, 30, 30)
+        pdf.cell(50, 8, pdf_texto(etiqueta), border="B")
+        
+        pdf.set_font("Arial", "", 10)
+        # Formateo de faltas separadas por coma
+        if etiqueta == "Infracciones / Faltas:":
+            val_clean = ", ".join([f.strip() for f in re.split(r"[\n,;]+", str(valor or "")) if f.strip()])
+        else:
+            val_clean = str(valor or "")
+            
+        pdf.multi_cell(0, 8, pdf_texto(val_clean), border="B")
+        pdf.ln(1)
 
-    # Observaciones y Sanción
-    if row.get("observaciones"):
-        pdf.ln(4)
-        pdf.set_font("Arial", "B", 12)
-        pdf.cell(190, 8, pdf_texto("Observaciones:"), ln=True)
-        pdf.set_font("Arial", "", 11)
-        pdf.multi_cell(0, 6, pdf_texto(row.get("observaciones")))
+    fila_pdf("Fecha del Reporte:", row.get("fecha", ""))
+    fila_pdf("Conductor / Operario:", row.get("operario", ""))
+    fila_pdf("Infracciones / Faltas:", row.get("faltas", ""))
+    fila_pdf("Sanción Administrativa:", row.get("sancion") or "Feedback")
 
-    pdf.ln(4)
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(190, 8, pdf_texto("Sanción / Detalles de la medida:"), ln=True)
-    pdf.set_font("Arial", "", 11)
-    sancion_data = row.get("sancion", "") or "Sin observaciones registradas."
-    pdf.multi_cell(0, 6, pdf_texto(sancion_data))
+    pdf.ln(3)
 
-    # Descarga puntual de la imagen solo para el PDF requerido
+    # 3. DESCRIPCIÓN TÉCNICA
+    pdf.set_font("Arial", "B", 10)
+    pdf.set_text_color(30, 30, 30)
+    pdf.cell(0, 6, pdf_texto("Descripción Técnica de los Hechos:"), ln=True)
+    pdf.ln(1)
+
+    # Cuadro de texto con borde rojo
+    obs_texto = pdf_texto(row.get("observaciones") or "Sin observaciones registradas.")
+    pdf.set_draw_color(200, 30, 30)
+    pdf.set_linewidth(0.3)
+    pdf.multi_cell(190, 7, f" {obs_texto}", border=1)
+    pdf.ln(5)
+
+    # 4. EVIDENCIA FOTOGRÁFICA
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(0, 6, pdf_texto("Evidencia Fotográfica:"), ln=True)
+    pdf.ln(2)
+
     foto_url = obtener_url_foto(row.get("foto_path"))
     if foto_url:
         try:
             resp = requests.get(foto_url, timeout=10)
             if resp.status_code == 200:
                 img_ram = io.BytesIO(resp.content)
-                pdf.ln(6)
-                pdf.set_font("Arial", "B", 12)
-                pdf.cell(190, 8, pdf_texto("Evidencia Fotográfica:"), ln=True)
-                pdf.image(img_ram, x=15, w=160)
+                pdf.image(img_ram, x=10, w=110)
         except Exception:
-            pass
+            pdf.set_font("Arial", "I", 9)
+            pdf.cell(0, 5, pdf_texto("(No se pudo incluir la imagen en el PDF)"), ln=True)
 
     salida = pdf.output(dest="S")
     return bytes(salida) if isinstance(salida, (bytes, bytearray)) else salida.encode("latin-1", errors="replace")
@@ -310,7 +330,7 @@ with tab_reg:
             except Exception as e:
                 st.error(f"Error al guardar el informe: {e}")
 
-# PESTAÑA 2: HISTORIAL (OPTIMIZADA PARA CONTROL DE EGRESS)
+# PESTAÑA 2: HISTORIAL (OPTIMIZADO PARA CONTROL DE EGRESS)
 with tab_hist:
     st.subheader("Historial de Registros")
 
@@ -328,7 +348,7 @@ with tab_hist:
         if filtro != "Mostrar Todos":
             dfh = dfh[dfh["grupo_lista"].astype(str) == filtro]
 
-        # Paginación para proteger el ancho de banda
+        # Paginación (10 elementos por página)
         TAMANO_PAGINA = 10
         total_paginas = max(1, (len(dfh) + TAMANO_PAGINA - 1) // TAMANO_PAGINA)
         pagina_actual = st.number_input("Página", min_value=1, max_value=total_paginas, value=1)
@@ -368,7 +388,7 @@ with tab_hist:
                     else:
                         st.caption("Sin evidencia fotográfica")
 
-                # Preparación del PDF únicamente cuando se presiona el botón
+                # Generación de PDF bajo demanda al hacer clic
                 if st.button(f"📄 Preparar PDF de Informe #{rid}", key=f"btn_pdf_{rid}"):
                     with st.spinner("Generando documento..."):
                         try:
