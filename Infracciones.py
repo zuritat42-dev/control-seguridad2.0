@@ -37,7 +37,6 @@ CHOFERES_EXTRAS_FILE = "choferes_extras.txt"
 @st.cache_data(ttl=300)
 def consultar_infracciones_cache():
     try:
-        # Se cambió a 'Infracciones' con mayúscula como tu tabla real
         response = supabase.table("Infracciones").select("*").execute()
         return response.data
     except Exception as e:
@@ -227,7 +226,6 @@ else:
             ]
         )
 
-        # ✍️ AQUÍ ESTÁ TU RECUADRO DE TEXTO PARA ESCRIBIR LA SANCIÓN libremente
         sancion_input = st.text_area("Sanción aplicada / Detalles de la medida")
         fecha_registro = st.date_input("Fecha del Evento", date.today())
 
@@ -237,7 +235,6 @@ else:
             elif not faltas:
                 st.error("Debe seleccionar al menos un tipo de incumplimiento.")
             else:
-                # Armado con las mayúsculas idénticas a tus columnas de Supabase
                 datos_informe = {
                     "Operario": operario,
                     "grupo_lista": grupo_pertenencia,
@@ -258,6 +255,9 @@ else:
         st.subheader("Historial de Registros")
         
         datos_historial = consultar_infracciones_cache()
-        if not datos_historial:
-            st.info("No hay informes registrados todavía en esta base de datos.")
-        else:
+        if datos_historial:
+            df_historial = pd.DataFrame(datos_historial)
+            col_id = "id" if "id" in df_historial.columns else ("Id" if "Id" in df_historial.columns else None)
+            col_creado = "created_at" if "created_at" in df_historial.columns else ("Created_at" if "Created_at" in df_historial.columns else None)
+            
+            if col_creado:
