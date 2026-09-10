@@ -81,7 +81,6 @@ def generar_pdf_informe(row):
     pdf.cell(200, 10, "Desvios Detectados:", ln=True)
     pdf.set_font("Arial", "", 12)
     
-    # Soporta que la columna se llame 'faltas' o 'Faltas'
     faltas_data = row.get('faltas', row.get('Faltas', ''))
     if isinstance(faltas_data, list):
         for falta in faltas_data:
@@ -91,11 +90,11 @@ def generar_pdf_informe(row):
         
     pdf.ln(5)
     pdf.set_font("Arial", "B", 12)
-    pdf.cell(200, 10, "Observaciones / Sancion:", ln=True)
+    pdf.cell(200, 10, "Sancion / Observaciones:", ln=True)
     pdf.set_font("Arial", "", 12)
     
-    obs_data = row.get('observaciones', row.get('Sancion', 'Sin observaciones adicionales.'))
-    pdf.multi_cell(0, 10, str(obs_data))
+    sancion_data = row.get('Sancion', row.get('sancion', row.get('observaciones', 'Sin observaciones registrados.')))
+    pdf.multi_cell(0, 10, str(sancion_data))
     
     return pdf.output(dest="S").encode("latin-1", errors="ignore")
 
@@ -152,7 +151,6 @@ else:
     datos_alertas = consultar_infracciones_cache()
     if datos_alertas:
         df_alertas = pd.DataFrame(datos_alertas)
-        # Buscamos 'operario' tolerando mayúsculas 'Operario'
         col_op = "operario" if "operario" in df_alertas.columns else ("Operario" if "Operario" in df_alertas.columns else None)
         
         if not df_alertas.empty and col_op:
@@ -228,7 +226,7 @@ else:
             ]
         )
 
-        observaciones = st.text_area("Observaciones adicionales / Detalles")
+        sancion_input = st.text_area("Sanción aplicada / Detalles de la medida")
         fecha_registro = st.date_input("Fecha del Evento", date.today())
 
         if st.button("Guardar Informe"):
@@ -237,12 +235,12 @@ else:
             elif not faltas:
                 st.error("Debe seleccionar al menos un tipo de incumplimiento.")
             else:
-                # Mapeamos a minúsculas para mantener orden interno
+                # Se mapea exactamente al nombre de tus columnas en Supabase
                 datos_informe = {
                     "operario": operario,
                     "grupo_lista": grupo_pertenencia,
                     "faltas": faltas,
-                    "observaciones": observaciones,
+                    "Sancion": sancion_input,
                     "fecha": str(fecha_registro)
                 }
                 try:
@@ -262,4 +260,5 @@ else:
             st.info("No hay informes registrados todavía en esta base de datos.")
         else:
             df_historial = pd.DataFrame(datos_historial)
-            if df_historial.empty:
+            col_id = "id" if "id" in df_historial.columns else ("Id" if "Id" in df_historial.columns else None)
+
