@@ -8,7 +8,7 @@ from fpdf import FPDF
 from supabase import create_client, Client
 
 # =====================================
-# CONFIGURACIÓN SUPABASE (Pon tus datos limpios aquí)
+# CONFIGURACIÓN SUPABASE
 # =====================================
 
 SUPABASE_URL = "https://zwchdpugmqturznuxntc.supabase.co"
@@ -72,16 +72,17 @@ def generar_pdf_informe(row):
     pdf.ln(10)
     
     pdf.set_font("Arial", "", 12)
-    pdf.cell(200, 10, f"Fecha del Registro: {row.get('fecha', 'N/A')}", ln=True)
-    pdf.cell(200, 10, f"Conductor/Operario: {row.get('operario', 'N/A')}", ln=True)
-    pdf.cell(200, 10, f"Lista de Origen: {row.get('grupo_lista', 'N/A')}", ln=True)
+    pdf.cell(200, 10, f"Fecha del Registro: {row.get('fecha', row.get('Fecha', 'N/A'))}", ln=True)
+    pdf.cell(200, 10, f"Conductor/Operario: {row.get('operario', row.get('Operario', 'N/A'))}", ln=True)
+    pdf.cell(200, 10, f"Lista de Origen: {row.get('grupo_lista', row.get('Grupo_lista', 'N/A'))}", ln=True)
     pdf.ln(5)
     
     pdf.set_font("Arial", "B", 12)
     pdf.cell(200, 10, "Desvios Detectados:", ln=True)
     pdf.set_font("Arial", "", 12)
     
-    faltas_data = row.get('faltas', '')
+    # Soporta que la columna se llame 'faltas' o 'Faltas'
+    faltas_data = row.get('faltas', row.get('Faltas', ''))
     if isinstance(faltas_data, list):
         for falta in faltas_data:
             pdf.cell(200, 8, f"- {falta}", ln=True)
@@ -90,9 +91,11 @@ def generar_pdf_informe(row):
         
     pdf.ln(5)
     pdf.set_font("Arial", "B", 12)
-    pdf.cell(200, 10, "Observaciones / Detalles:", ln=True)
+    pdf.cell(200, 10, "Observaciones / Sancion:", ln=True)
     pdf.set_font("Arial", "", 12)
-    pdf.multi_cell(0, 10, str(row.get('observaciones', 'Sin observaciones.')))
+    
+    obs_data = row.get('observaciones', row.get('Sancion', 'Sin observaciones adicionales.'))
+    pdf.multi_cell(0, 10, str(obs_data))
     
     return pdf.output(dest="S").encode("latin-1", errors="ignore")
 
@@ -149,8 +152,11 @@ else:
     datos_alertas = consultar_infracciones_cache()
     if datos_alertas:
         df_alertas = pd.DataFrame(datos_alertas)
-        if not df_alertas.empty and "operario" in df_alertas.columns:
-            conteo_faltas = df_alertas["operario"].value_counts()
+        # Buscamos 'operario' tolerando mayúsculas 'Operario'
+        col_op = "operario" if "operario" in df_alertas.columns else ("Operario" if "Operario" in df_alertas.columns else None)
+        
+        if not df_alertas.empty and col_op:
+            conteo_faltas = df_alertas[col_op].value_counts()
             reincidentes = conteo_faltas[conteo_faltas >= 3]
 
             if not reincidentes.empty:
@@ -231,6 +237,7 @@ else:
             elif not faltas:
                 st.error("Debe seleccionar al menos un tipo de incumplimiento.")
             else:
+                # Mapeamos a minúsculas para mantener orden interno
                 datos_informe = {
                     "operario": operario,
                     "grupo_lista": grupo_pertenencia,
@@ -256,11 +263,3 @@ else:
         else:
             df_historial = pd.DataFrame(datos_historial)
             if df_historial.empty:
-                st.info("No hay informes registrados todavía.")
-            else:
-                if "created_at" in df_historial.columns:
-                    df_historial = df_historial.sort_values(by="created_at", ascending=False)
-                
-                st.dataframe(df_historial, use_container_width=True)
-                
-                st.markdown("### Descargar Informe Individual en PDF")
