@@ -8,12 +8,13 @@ from fpdf import FPDF
 from supabase import create_client, Client
 
 # =====================================
-# CONFIGURACIÓN SUPABASE (Pon aquí tus nuevos datos)
+# CONFIGURACIÓN SUPABASE (Pon tus datos limpios aquí)
 # =====================================
 
 SUPABASE_URL = "https://zwchdpugmqturznuxntc.supabase.co"
 
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3Y2hkcHVnbXF0dXJ6bnV4bnRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5OTM0MjYsImV4cCI6MjEwNDU2OTQyNn0.3ZPaWLTh2rWcnGvK_Cg5USgAOGxrB0dRd-AwYhEPK6s"
+
 supabase: Client = create_client(
     SUPABASE_URL,
     SUPABASE_KEY
@@ -33,7 +34,7 @@ PASSWORD_ADMIN = "Seguridad2026"
 CHOFERES_EXTRAS_FILE = "choferes_extras.txt"
 
 # =====================================
-# FUNCIONES Y CACHÉ (SOLUCIÓN DE MEMORIA)
+# FUNCIONES Y CACHÉ
 # =====================================
 
 @st.cache_data(ttl=300)
@@ -42,48 +43,59 @@ def consultar_infracciones_cache():
 
 
 def cargar_lista_txt(ruta_archivo, nombres_defecto):
-
     if os.path.exists(ruta_archivo):
-
-        with open(
-            ruta_archivo,
-            "r",
-            encoding="utf-8"
-        ) as f:
-
-            return [
-                line.strip()
-                for line in f.readlines()
-                if line.strip()
-            ]
-
+        with open(ruta_archivo, "r", encoding="utf-8") as f:
+            return [line.strip() for line in f.readlines() if line.strip()]
     return nombres_defecto
 
 
 def guardar_chofer_extra(nombre):
-
-    with open(
-        CHOFERES_EXTRAS_FILE,
-        "a",
-        encoding="utf-8"
-    ) as f:
-
+    with open(CHOFERES_EXTRAS_FILE, "a", encoding="utf-8") as f:
         f.write(nombre + "\n")
 
 
 def limpiar_nombre_archivo(texto):
-
     texto = texto.strip()
-
     texto = texto.replace(" ", "_")
-
-    texto = re.sub(
-        r'[^A-Za-z0-9_\-]',
-        '',
-        texto
-    )
-
+    texto = re.sub(r'[^A-Za-z0-9_\-]', '', texto)
     return texto
+
+# 🔥 FUNCIÓN PARA GENERAR EL PDF
+def generar_pdf_informe(row):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 16)
+    
+    # Título
+    pdf.cell(200, 10, "Reporte de Incumplimiento de Seguridad e Higiene", ln=True, align="C")
+    pdf.ln(10)
+    
+    pdf.set_font("Arial", "", 12)
+    # Contenido del registro
+    pdf.cell(200, 10, f"Fecha del Registro: {row.get('fecha', 'N/A')}", ln=True)
+    pdf.cell(200, 10, f"Conductor/Operario: {row.get('operario', 'N/A')}", ln=True)
+    pdf.cell(200, 10, f"Lista de Origen: {row.get('grupo_lista', 'N/A')}", ln=True)
+    pdf.ln(5)
+    
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(200, 10, "Desvíos Detectados:", ln=True)
+    pdf.set_font("Arial", "", 12)
+    
+    # Manejo de las faltas (pueden venir como lista o texto)
+    faltas_data = row.get('faltas', '')
+    if isinstance(faltas_data, list):
+        for falta in faltas_data:
+            pdf.cell(200, 8, f"- {falta}", ln=True)
+    else:
+        pdf.cell(200, 8, f"- {faltas_data}", ln=True)
+        
+    pdf.ln(5)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(200, 10, "Observaciones / Detalles:", ln=True)
+    pdf.set_font("Arial", "", 12)
+    pdf.multi_cell(0, 10, str(row.get('observaciones', 'Sin observaciones.')))
+    
+    return pdf.output(dest="S").encode("latin-1", errors="ignore")
 
 # =====================================
 # LISTAS
@@ -99,10 +111,7 @@ LISTA_T2_SANTIAGO = cargar_lista_txt("choferes_t2_santiago.txt", [])
 # STREAMLIT
 # =====================================
 
-st.set_page_config(
-    page_title="Control de Seguridad Industrial",
-    layout="wide"
-)
+st.set_page_config(page_title="Control de Seguridad Industrial", layout="wide")
 
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
@@ -112,22 +121,15 @@ if "autenticado" not in st.session_state:
 # =====================================
 
 def login():
-
     st.title("Acceso al Sistema de Seguridad")
-
     user = st.text_input("Usuario")
-
     password = st.text_input("Contraseña", type="password")
 
     if st.button("Ingresar"):
-
         if user == USUARIO_ADMIN and password == PASSWORD_ADMIN:
-
             st.session_state["autenticado"] = True
             st.rerun()
-
         else:
-
             st.error("Credenciales incorrectas.")
 
 # =====================================
@@ -135,73 +137,43 @@ def login():
 # =====================================
 
 if not st.session_state["autenticado"]:
-
     login()
-
 else:
-
     st.sidebar.title("Navegación")
-
     if st.sidebar.button("Cerrar Sesión"):
-
         st.session_state["autenticado"] = False
         st.rerun()
 
     st.title("Sistema de Gestión de Seguridad e Higiene")
 
-    # =====================================
-    # ALERTAS (OPTIMIZADO CON CACHÉ)
-    # =====================================
-
+    # ALERTAS
     try:
         response = consultar_infracciones_cache()
         df_alertas = pd.DataFrame(response.data)
 
         if not df_alertas.empty:
-
             conteo_faltas = df_alertas["operario"].value_counts()
             reincidentes = conteo_faltas[conteo_faltas >= 3]
 
             if not reincidentes.empty:
-
                 with st.container(border=True):
-
                     st.error("⚠️ ALERTA DE SEGURIDAD: CONTROL DE REINCIDENCIA CRÍTICA")
-
                     for chofer, total in reincidentes.items():
-
                         st.markdown(f"* El conductor **{chofer}** ha acumulado **{total} informes**.")
-
     except Exception as e:
-
         st.error(f"Error cargando alertas: {e}")
 
-    # =====================================
     # TABS
-    # =====================================
+    tab_reg, tab_hist = st.tabs(["Registro de Incidencias", "Historial de Informes"])
 
-    tab_reg, tab_hist = st.tabs([
-        "Registro de Incidencias",
-        "Historial de Informes"
-    ])
-
-    # =====================================
-    # REGISTRO
-    # =====================================
-
+    # PESTAÑA: REGISTRO
     with tab_reg:
-
         st.subheader("Formulario de Registro")
-
         opcion_seleccionada = st.radio(
             "Seleccione el grupo de personal:",
             [
-                "Choferes de T1",
-                "Choferes de T2",
-                "Choferes de T2 Catamarca",
-                "Choferes de T2 La Rioja",
-                "Choferes de T2 Santiago Del Estero",
-                "Cargar nombres apartes"
+                "Choferes de T1", "Choferes de T2", "Choferes de T2 Catamarca",
+                "Choferes de T2 La Rioja", "Choferes de T2 Santiago Del Estero", "Cargar nombres apartes"
             ]
         )
 
@@ -211,70 +183,46 @@ else:
         if opcion_seleccionada == "Choferes de T1":
             operario = st.selectbox("Personal de T1 Involucrado", LISTA_T1)
             grupo_pertenencia = "T1"
-
         elif opcion_seleccionada == "Choferes de T2":
             operario = st.selectbox("Personal de T2 Involucrado", LISTA_T2)
             grupo_pertenencia = "T2"
-
         elif opcion_seleccionada == "Choferes de T2 Catamarca":
             operario = st.selectbox("Choferes de T2 Catamarca", LISTA_T2_CATAMARCA)
             grupo_pertenencia = "T2 Catamarca"
-
         elif opcion_seleccionada == "Choferes de T2 La Rioja":
             operario = st.selectbox("Choferes de T2 La Rioja", LISTA_T2_LARIOJA)
             grupo_pertenencia = "T2 La Rioja"
-
         elif opcion_seleccionada == "Choferes de T2 Santiago Del Estero":
             operario = st.selectbox("Choferes de T2 Santiago Del Estero", LISTA_T2_SANTIAGO)
             grupo_pertenencia = "T2 Santiago Del Estero"
-
         elif opcion_seleccionada == "Cargar nombres apartes":
-
             st.info("Módulo para registrar choferes fuera de T1/T2.")
             grupo_pertenencia = "Carga Aparte / Extra"
-
             with st.expander("➕ Registrar nuevo chofer"):
-
                 nuevo_nombre = st.text_input("Nombre completo del nuevo chofer")
-
                 if st.button("Guardar nombre en el sistema"):
-
                     if nuevo_nombre.strip() != "":
-
                         guardar_chofer_extra(nuevo_nombre.strip())
                         st.success(f"{nuevo_nombre} agregado con éxito.")
                         st.rerun()
-
                     else:
-
                         st.error("El nombre no puede estar vacío.")
 
             lista_extras = cargar_lista_txt(CHOFERES_EXTRAS_FILE, [])
-
             if lista_extras:
                 operario = st.selectbox("Seleccione el chofer", lista_extras)
             else:
                 st.warning("No hay choferes cargados.")
 
-        # =====================================
-        # FORMULARIO
-        # =====================================
-        
         st.write("---")
         st.markdown(f"**Conductor:** {operario} | **Lista de Origen:** {grupo_pertenencia}")
 
         faltas = st.multiselect(
             "Tipos de Incumplimiento",
             [
-                "No utiliza Cuñas/Calzas",
-                "Situacion de riesgo",
-                "Falta de E.P.P",
-                "Uso del celular",
-                "Comportamiento indebido",
-                "No cumple con el punto seguro",
-                "Estaciona en zona prohibida",
-                "No posee alarma de retroceso",
-                "Exceso de velocidad"
+                "No utiliza Cuñas/Calzas", "Situacion de riesgo", "Falta de E.P.P",
+                "Uso del celular", "Comportamiento indebido", "No cumple con el punto seguro",
+                "Estaciona en zona prohibida", "No posee alarma de retroceso", "Exceso de velocidad"
             ]
         )
 
@@ -294,7 +242,6 @@ else:
                     "observaciones": observaciones,
                     "fecha": str(fecha_registro)
                 }
-
                 try:
                     supabase.table("infracciones").insert(datos_informe).execute()
                     st.success("¡Informe registrado exitosamente!")
@@ -303,10 +250,7 @@ else:
                 except Exception as error_db:
                     st.error(f"Error al guardar en la base de datos: {error_db}")
 
-    # =====================================
-    # HISTORIAL
-    # =====================================
-
+    # PESTAÑA: HISTORIAL
     with tab_hist:
         st.subheader("Historial de Registros")
         
@@ -320,12 +264,11 @@ else:
                 if "created_at" in df_historial.columns:
                     df_historial = df_historial.sort_values(by="created_at", ascending=False)
                 
+                # Vista de la tabla general
                 st.dataframe(df_historial, use_container_width=True)
                 
-                if st.button("🔄 Forzar actualización de datos"):
-                    st.cache_data.clear()
-                    st.rerun()
-        except Exception as e:
-            st.error(f"Error visualizando el historial: {e}")
+                # 📥 SECCIÓN PARA DESCARGAR EN PDF INDIVIDUALMENTE
+                st.markdown("### Descargar Informe Individual en PDF")
+
 
 
