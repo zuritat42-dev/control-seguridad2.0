@@ -90,10 +90,10 @@ def generar_pdf_informe(row):
         
     pdf.ln(5)
     pdf.set_font("Arial", "B", 12)
-    pdf.cell(200, 10, "Sancion / Observaciones:", ln=True)
+    pdf.cell(200, 10, "sancion / Observaciones:", ln=True)
     pdf.set_font("Arial", "", 12)
     
-    sancion_data = row.get('Sancion', row.get('sancion', row.get('observaciones', 'Sin observaciones registrados.')))
+    sancion_data = row.get('sancion', row.get('sancion', row.get('observaciones', 'Sin observaciones registrados.')))
     pdf.multi_cell(0, 10, str(sancion_data))
     
     return pdf.output(dest="S").encode("latin-1", errors="ignore")
