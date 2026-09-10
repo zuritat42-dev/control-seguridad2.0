@@ -15,10 +15,7 @@ SUPABASE_URL = "https://zwchdpugmqturznuxntc.supabase.co"
 
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3Y2hkcHVnbXF0dXJ6bnV4bnRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5OTM0MjYsImV4cCI6MjEwNDU2OTQyNn0.3ZPaWLTh2rWcnGvK_Cg5USgAOGxrB0dRd-AwYhEPK6s"
 
-supabase: Client = create_client(
-    SUPABASE_URL,
-    SUPABASE_KEY
-)
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # =====================================
 # CONFIGURACIÓN SEGURIDAD
@@ -28,7 +25,7 @@ USUARIO_ADMIN = "Asistentes de maniobra"
 PASSWORD_ADMIN = "Seguridad2026"
 
 # =====================================
-# ARCHIVOS
+# ARCHIVOS LOCALES
 # =====================================
 
 CHOFERES_EXTRAS_FILE = "choferes_extras.txt"
@@ -39,7 +36,12 @@ CHOFERES_EXTRAS_FILE = "choferes_extras.txt"
 
 @st.cache_data(ttl=300)
 def consultar_infracciones_cache():
-    return supabase.table("infracciones").select("*").execute()
+    try:
+        response = supabase.table("infracciones").select("*").execute()
+        return response.data
+    except Exception as e:
+        st.error(f"Error de conexión con la base de datos: {e}")
+        return []
 
 
 def cargar_lista_txt(ruta_archivo, nombres_defecto):
@@ -60,28 +62,25 @@ def limpiar_nombre_archivo(texto):
     texto = re.sub(r'[^A-Za-z0-9_\-]', '', texto)
     return texto
 
-# 🔥 FUNCIÓN PARA GENERAR EL PDF
+
 def generar_pdf_informe(row):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", "B", 16)
     
-    # Título
     pdf.cell(200, 10, "Reporte de Incumplimiento de Seguridad e Higiene", ln=True, align="C")
     pdf.ln(10)
     
     pdf.set_font("Arial", "", 12)
-    # Contenido del registro
     pdf.cell(200, 10, f"Fecha del Registro: {row.get('fecha', 'N/A')}", ln=True)
     pdf.cell(200, 10, f"Conductor/Operario: {row.get('operario', 'N/A')}", ln=True)
     pdf.cell(200, 10, f"Lista de Origen: {row.get('grupo_lista', 'N/A')}", ln=True)
     pdf.ln(5)
     
     pdf.set_font("Arial", "B", 12)
-    pdf.cell(200, 10, "Desvíos Detectados:", ln=True)
+    pdf.cell(200, 10, "Desvios Detectados:", ln=True)
     pdf.set_font("Arial", "", 12)
     
-    # Manejo de las faltas (pueden venir como lista o texto)
     faltas_data = row.get('faltas', '')
     if isinstance(faltas_data, list):
         for falta in faltas_data:
@@ -98,7 +97,7 @@ def generar_pdf_informe(row):
     return pdf.output(dest="S").encode("latin-1", errors="ignore")
 
 # =====================================
-# LISTAS
+# CARGA DE LISTAS
 # =====================================
 
 LISTA_T1 = cargar_lista_txt("choferes_t1.txt", [])
@@ -108,7 +107,7 @@ LISTA_T2_LARIOJA = cargar_lista_txt("choferes_t2_larioja.txt", [])
 LISTA_T2_SANTIAGO = cargar_lista_txt("choferes_t2_santiago.txt", [])
 
 # =====================================
-# STREAMLIT
+# CONFIGURACIÓN STREAMLIT
 # =====================================
 
 st.set_page_config(page_title="Control de Seguridad Industrial", layout="wide")
@@ -133,7 +132,7 @@ def login():
             st.error("Credenciales incorrectas.")
 
 # =====================================
-# APP PRINCIPAL
+# APLICACIÓN PRINCIPAL
 # =====================================
 
 if not st.session_state["autenticado"]:
@@ -146,12 +145,11 @@ else:
 
     st.title("Sistema de Gestión de Seguridad e Higiene")
 
-    # ALERTAS
-    try:
-        response = consultar_infracciones_cache()
-        df_alertas = pd.DataFrame(response.data)
-
-        if not df_alertas.empty:
+    # PANEL DE ALERTAS
+    datos_alertas = consultar_infracciones_cache()
+    if datos_alertas:
+        df_alertas = pd.DataFrame(datos_alertas)
+        if not df_alertas.empty and "operario" in df_alertas.columns:
             conteo_faltas = df_alertas["operario"].value_counts()
             reincidentes = conteo_faltas[conteo_faltas >= 3]
 
@@ -160,13 +158,11 @@ else:
                     st.error("⚠️ ALERTA DE SEGURIDAD: CONTROL DE REINCIDENCIA CRÍTICA")
                     for chofer, total in reincidentes.items():
                         st.markdown(f"* El conductor **{chofer}** ha acumulado **{total} informes**.")
-    except Exception as e:
-        st.error(f"Error cargando alertas: {e}")
 
-    # TABS
+    # PESTAÑAS
     tab_reg, tab_hist = st.tabs(["Registro de Incidencias", "Historial de Informes"])
 
-    # PESTAÑA: REGISTRO
+    # REGISTRO
     with tab_reg:
         st.subheader("Formulario de Registro")
         opcion_seleccionada = st.radio(
@@ -250,25 +246,21 @@ else:
                 except Exception as error_db:
                     st.error(f"Error al guardar en la base de datos: {error_db}")
 
-    # PESTAÑA: HISTORIAL
+    # HISTORIAL
     with tab_hist:
         st.subheader("Historial de Registros")
         
-        try:
-            response_historial = consultar_infracciones_cache()
-            df_historial = pd.DataFrame(response_historial.data)
-
+        datos_historial = consultar_infracciones_cache()
+        if not datos_historial:
+            st.info("No hay informes registrados todavía en esta base de datos.")
+        else:
+            df_historial = pd.DataFrame(datos_historial)
             if df_historial.empty:
                 st.info("No hay informes registrados todavía.")
             else:
                 if "created_at" in df_historial.columns:
                     df_historial = df_historial.sort_values(by="created_at", ascending=False)
                 
-                # Vista de la tabla general
                 st.dataframe(df_historial, use_container_width=True)
                 
-                # 📥 SECCIÓN PARA DESCARGAR EN PDF INDIVIDUALMENTE
                 st.markdown("### Descargar Informe Individual en PDF")
-
-
-
