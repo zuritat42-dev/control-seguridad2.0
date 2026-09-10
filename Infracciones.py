@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import os
 import re
+import requests
+import tempfile
 from datetime import date
 from fpdf import FPDF
 from supabase import create_client, Client
@@ -105,45 +107,75 @@ def pdf_texto(valor):
 
 
 def generar_pdf(row):
+    """Genera el PDF manteniendo el formato original e incorporando la foto."""
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", "B", 16)
+
+    # FORMATO ORIGINAL
     pdf.cell(200, 10, pdf_texto("Reporte de Incumplimiento de Seguridad e Higiene"),
              ln=True, align="C")
     pdf.ln(10)
 
     pdf.set_font("Arial", "", 12)
-    pdf.cell(200, 10, pdf_texto(f"Fecha del Registro: {row.get('fecha', 'N/A')}"), ln=True)
-    pdf.cell(200, 10, pdf_texto(f"Conductor/Operario: {row.get('operario', 'N/A')}"), ln=True)
-    pdf.cell(200, 10, pdf_texto(f"Lista de Origen: {row.get('grupo_lista', 'N/A')}"), ln=True)
+    pdf.cell(200, 10, pdf_texto(
+        f"Fecha del Registro: {row.get('fecha', 'N/A')}"
+    ), ln=True)
+    pdf.cell(200, 10, pdf_texto(
+        f"Conductor/Operario: {row.get('operario', 'N/A')}"
+    ), ln=True)
+    pdf.cell(200, 10, pdf_texto(
+        f"Lista de Origen: {row.get('grupo_lista', 'N/A')}"
+    ), ln=True)
     pdf.ln(5)
 
     pdf.set_font("Arial", "B", 12)
     pdf.cell(200, 10, pdf_texto("Desvios Detectados:"), ln=True)
     pdf.set_font("Arial", "", 12)
 
-    faltas = str(row.get("faltas", "") or "")
-    for falta in re.split(r"[\n,;]+", faltas):
+    faltas_data = row.get("faltas", "")
+    for falta in re.split(r"[\n,;]+", str(faltas_data or "")):
         if falta.strip():
             pdf.cell(200, 8, pdf_texto(f"- {falta.strip()}"), ln=True)
 
     pdf.ln(5)
-    obs = str(row.get("observaciones", "") or "")
-    if obs:
-        pdf.set_font("Arial", "B", 12)
-        pdf.cell(200, 10, pdf_texto("Observaciones:"), ln=True)
-        pdf.set_font("Arial", "", 12)
-        pdf.multi_cell(0, 10, pdf_texto(obs))
-        pdf.ln(3)
-
     pdf.set_font("Arial", "B", 12)
     pdf.cell(200, 10, pdf_texto("Sancion / Observaciones:"), ln=True)
     pdf.set_font("Arial", "", 12)
-    pdf.multi_cell(0, 10, pdf_texto(
-        row.get("sancion", "") or "Sin observaciones registradas."
-    ))
 
-    # FPDF puede devolver bytearray; bytes() corrige el error de encode.
+    sancion_data = row.get("sancion", "") or "Sin observaciones registradas."
+    pdf.multi_cell(0, 10, pdf_texto(sancion_data))
+
+    # FOTO DE EVIDENCIA
+    foto_url = obtener_url_foto(row.get("foto_path"))
+    if foto_url:
+        archivo_temporal = None
+        try:
+            respuesta = requests.get(foto_url, timeout=20)
+            respuesta.raise_for_status()
+
+            contenido_tipo = respuesta.headers.get("content-type", "").lower()
+            extension = ".png" if "png" in contenido_tipo else ".jpg"
+
+            with tempfile.NamedTemporaryFile(delete=False, suffix=extension) as tmp:
+                tmp.write(respuesta.content)
+                archivo_temporal = tmp.name
+
+            # Si no entra en la página, FPDF crea una nueva automáticamente.
+            pdf.ln(5)
+            pdf.set_font("Arial", "B", 12)
+            pdf.cell(200, 10, pdf_texto("Evidencia Fotográfica:"), ln=True)
+            pdf.image(archivo_temporal, x=20, w=170)
+
+        except Exception:
+            # El resto del informe sigue siendo descargable aunque la foto no pueda
+            # recuperarse desde Storage.
+            pass
+        finally:
+            if archivo_temporal and os.path.exists(archivo_temporal):
+                os.remove(archivo_temporal)
+
+    # FPDF puede devolver bytearray en versiones nuevas.
     return bytes(pdf.output(dest="S"))
 
 
