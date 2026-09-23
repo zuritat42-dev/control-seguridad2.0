@@ -144,7 +144,7 @@ def generar_pdf(row):
     tipo_op = row.get("tipo_operacion", "Desvío / Infracción")
     es_exitoso = "Exitosa" in str(tipo_op)
 
-    # 1. ENCABEZADO (Mantiene el color Rojo Principal en ambos casos)
+    # 1. ENCABEZADO
     pdf.set_font("Arial", "B", 16)
     pdf.set_text_color(200, 30, 30)  
     
@@ -266,7 +266,7 @@ if datos:
             reincidentes = reincidentes[reincidentes >= 3]
             if not reincidentes.empty:
                 with st.container(border=True):
-                    st.error("⚠️ ALERTA DE SEGURIDAD: CONTROL DE REINCIDENCIA CRÍTICA")
+                    st.error("ALERTA DE SEGURIDAD: CONTROL DE REINCIDENCIA CRÍTICA")
                     for chofer, total in reincidentes.items():
                         st.markdown(f"* El conductor **{chofer}** ha acumulado **{total} informes de desvío**.")
 
@@ -281,7 +281,7 @@ with tab_reg:
 
     tipo_registro = st.radio(
         "Tipo de Operación a Registrar:",
-        ["⚠️ Desvío / Infracción", "✅ Operación Exitosa"],
+        ["Desvío / Infracción", "Operación Exitosa"],
         horizontal=True
     )
 
@@ -302,7 +302,7 @@ with tab_reg:
         grupo = "Carga Aparte / Extra"
         st.info("Módulo para registrar choferes fuera de las listas habituales.")
          
-        with st.expander("➕ Registrar nuevo chofer"):
+        with st.expander("Registrar nuevo chofer"):
             nuevo = st.text_input("Nombre completo del nuevo chofer")
             if st.button("Guardar nombre en el sistema"):
                 if nuevo.strip():
@@ -406,12 +406,10 @@ with tab_hist:
             rid = row.get("id", "N/A")
             op = row.get("operario", "N/A")
             fec = row.get("fecha", "N/A")
-            t_op = row.get("tipo_operacion", "Desvío")
+            t_op = row.get("tipo_operacion", "Desvío / Infracción")
             sect = row.get("sector", "Sin sector")
 
-            icono = "✅" if "Exitosa" in str(t_op) else "📄"
-
-            with st.expander(f"{icono} Informe #{rid} - {op} - {fec} ({sect})"):
+            with st.expander(f"Informe #{rid} - {op} - {fec} ({sect})"):
                 col1, col2 = st.columns([2, 1])
 
                 with col1:
