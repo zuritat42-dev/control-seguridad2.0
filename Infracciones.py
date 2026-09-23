@@ -40,6 +40,13 @@ MAPA_LISTAS = {
     "Choferes de T2 Santiago Del Estero": ("T2 Santiago Del Estero", "choferes_t2_santiago.txt")
 }
 
+SECTORES_DISPONIBLES = [
+    "Zona de Carga/Descarga (Alero)",
+    "Playa de Estacionamiento T1",
+    "Almacén",
+    "Recimpex"
+]
+
 # ============================================================
 # FUNCIONES AUXILIARES DE CONSULTA Y ARCHIVOS
 # ============================================================
@@ -47,12 +54,16 @@ MAPA_LISTAS = {
 def consultar_infracciones():
     try:
         r = (supabase.table(TABLA)
-             .select("id,fecha,operario,faltas,observaciones,sancion,foto_path,grupo_lista")
+             .select("id,fecha,operario,faltas,observaciones,sancion,foto_path,grupo_lista,sector,tipo_operacion")
              .order("id", desc=True).execute())
         return r.data or []
     except Exception as e:
-        st.error(f"Error de conexión con la base de datos: {e}")
-        return []
+        try:
+            r_fallback = supabase.table(TABLA).select("*").order("id", desc=True).execute()
+            return r_fallback.data or []
+        except Exception:
+            st.error(f"Error de conexión con la base de datos: {e}")
+            return []
 
 @st.cache_data(ttl=300)
 def cargar_lista_txt(ruta):
@@ -100,11 +111,10 @@ def subir_foto(archivo, operario, fecha):
     if ext not in [".jpg", ".jpeg", ".png"]:
         raise ValueError("La evidencia debe ser JPG, JPEG o PNG.")
 
-    # Reducción y compresión de imagen en memoria
     img = Image.open(archivo)
     if img.mode != "RGB":
         img = img.convert("RGB")
-    
+     
     img.thumbnail((1600, 1600))
     buffer = io.BytesIO()
     img.save(buffer, format="JPEG", quality=80, optimize=True)
@@ -117,7 +127,7 @@ def subir_foto(archivo, operario, fecha):
         ruta, contenido_optimizado,
         file_options={"content-type": "image/jpeg", "cache-control": "3600", "upsert": "false"}
     )
-    
+     
     url = obtener_url_foto(ruta)
     if not url:
         raise RuntimeError("La foto se subió, pero no se pudo obtener su URL.")
@@ -127,21 +137,30 @@ def pdf_texto(valor):
     return str(valor or "").encode("latin-1", errors="replace").decode("latin-1")
 
 def generar_pdf(row):
-    """Genera el PDF corregido sintácticamente para FPDF."""
+    """Genera el PDF manteniendo la estructura y diseño rojo original."""
     pdf = FPDF()
     pdf.add_page()
 
-    # 1. ENCABEZADO
+    tipo_op = row.get("tipo_operacion", "Desvío / Infracción")
+    es_exitoso = "Exitosa" in str(tipo_op)
+
+    # 1. ENCABEZADO (Mantiene el color Rojo Principal en ambos casos)
     pdf.set_font("Arial", "B", 16)
-    pdf.set_text_color(200, 30, 30)  # Rojo principal
-    pdf.cell(0, 8, pdf_texto("INFORME DE INCIDENCIA DE SEGURIDAD INDUSTRIAL"), ln=True, align="C")
+    pdf.set_text_color(200, 30, 30)  
+    
+    if es_exitoso:
+        titulo = "INFORME DE OPERACIÓN EXITOSA - SEGURIDAD"
+    else:
+        titulo = "INFORME DE INCIDENCIA DE SEGURIDAD INDUSTRIAL"
+
+    pdf.cell(0, 8, pdf_texto(titulo), ln=True, align="C")
 
     pdf.set_font("Arial", "I", 10)
-    pdf.set_text_color(100, 100, 100)  # Gris subtítulo
+    pdf.set_text_color(100, 100, 100)
     pdf.cell(0, 6, pdf_texto("Control de Gestion de Seguridad e Higiene"), ln=True, align="C")
     pdf.ln(3)
 
-    # Línea horizontal separadora roja (set_line_width corregido)
+    # Línea horizontal separadora roja
     pdf.set_draw_color(220, 80, 80)
     pdf.set_line_width(0.4)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
@@ -155,20 +174,23 @@ def generar_pdf(row):
         pdf.set_font("Arial", "B", 10)
         pdf.set_text_color(30, 30, 30)
         pdf.cell(50, 8, pdf_texto(etiqueta), border="B")
-        
+         
         pdf.set_font("Arial", "", 10)
-        if etiqueta == "Infracciones / Faltas:":
-            val_clean = ", ".join([f.strip() for f in re.split(r"[\n,;]+", str(valor or "")) if f.strip()])
-        else:
-            val_clean = str(valor or "")
-            
+        val_clean = str(valor or "")
         pdf.multi_cell(0, 8, pdf_texto(val_clean), border="B")
         pdf.ln(1)
 
     fila_pdf("Fecha del Reporte:", row.get("fecha", ""))
     fila_pdf("Conductor / Operario:", row.get("operario", ""))
-    fila_pdf("Infracciones / Faltas:", row.get("faltas", ""))
-    fila_pdf("Sanción Administrativa:", row.get("sancion") or "Feedback")
+    fila_pdf("Sector Asignado:", row.get("sector", "No especificado"))
+    fila_pdf("Tipo de Registro:", tipo_op)
+    
+    if es_exitoso:
+        fila_pdf("Detalle / Estado:", row.get("faltas", "Operación correcta"))
+        fila_pdf("Comentarios / Feedback:", row.get("sancion") or "Sin comentarios.")
+    else:
+        fila_pdf("Infracciones / Faltas:", row.get("faltas", ""))
+        fila_pdf("Sanción Administrativa:", row.get("sancion") or "Feedback")
 
     pdf.ln(3)
 
@@ -178,7 +200,6 @@ def generar_pdf(row):
     pdf.cell(0, 6, pdf_texto("Descripción Técnica de los Hechos:"), ln=True)
     pdf.ln(1)
 
-    # Cuadro de texto con borde rojo (set_line_width corregido)
     obs_texto = pdf_texto(row.get("observaciones") or "Sin observaciones registradas.")
     pdf.set_draw_color(200, 30, 30)
     pdf.set_line_width(0.3)
@@ -238,14 +259,16 @@ st.caption("Registro permanente de informes y evidencias fotográficas.")
 datos = consultar_infracciones()
 if datos:
     df = pd.DataFrame(datos)
-    if not df.empty and "operario" in df.columns:
-        reincidentes = df["operario"].value_counts()
-        reincidentes = reincidentes[reincidentes >= 3]
-        if not reincidentes.empty:
-            with st.container(border=True):
-                st.error("⚠️ ALERTA DE SEGURIDAD: CONTROL DE REINCIDENCIA CRÍTICA")
-                for chofer, total in reincidentes.items():
-                    st.markdown(f"* El conductor **{chofer}** ha acumulado **{total} informes**.")
+    if not df.empty and "operario" in df.columns and "tipo_operacion" in df.columns:
+        df_infracciones = df[df["tipo_operacion"].str.contains("Infracción", case=False, na=True)]
+        if not df_infracciones.empty:
+            reincidentes = df_infracciones["operario"].value_counts()
+            reincidentes = reincidentes[reincidentes >= 3]
+            if not reincidentes.empty:
+                with st.container(border=True):
+                    st.error("⚠️ ALERTA DE SEGURIDAD: CONTROL DE REINCIDENCIA CRÍTICA")
+                    for chofer, total in reincidentes.items():
+                        st.markdown(f"* El conductor **{chofer}** ha acumulado **{total} informes de desvío**.")
 
 # ============================================================
 # PESTAÑAS
@@ -255,6 +278,12 @@ tab_reg, tab_hist = st.tabs(["Registro de Incidencias", "Historial de Informes"]
 # PESTAÑA 1: REGISTRO
 with tab_reg:
     st.subheader("Formulario de Registro")
+
+    tipo_registro = st.radio(
+        "Tipo de Operación a Registrar:",
+        ["⚠️ Desvío / Infracción", "✅ Operación Exitosa"],
+        horizontal=True
+    )
 
     opciones_menu = list(MAPA_LISTAS.keys()) + ["Cargar nombres apartes"]
     opcion = st.radio("Seleccione el grupo de personal:", opciones_menu)
@@ -272,7 +301,7 @@ with tab_reg:
     else:
         grupo = "Carga Aparte / Extra"
         st.info("Módulo para registrar choferes fuera de las listas habituales.")
-        
+         
         with st.expander("➕ Registrar nuevo chofer"):
             nuevo = st.text_input("Nombre completo del nuevo chofer")
             if st.button("Guardar nombre en el sistema"):
@@ -289,26 +318,33 @@ with tab_reg:
         else:
             st.warning("No hay choferes extra cargados.")
 
+    sector = st.selectbox("Seleccione el Sector", SECTORES_DISPONIBLES)
+
     st.write("---")
-    st.markdown(f"**Conductor:** {operario} | **Lista de Origen:** {grupo}")
+    st.markdown(f"**Conductor:** {operario} | **Grupo:** {grupo} | **Sector:** {sector}")
 
-    faltas = st.multiselect("Tipos de Incumplimiento", [
-        "No utiliza Cuñas/Calzas", "Situacion de riesgo", "Falta de E.P.P",
-        "Uso del celular", "Comportamiento indebido", "No cumple con el punto seguro",
-        "Estaciona en zona prohibida", "No posee alarma de retroceso",
-        "Exceso de velocidad", "Interaccion Hombre-Maquina",
-        "No espera a ser asistido en la Maniobra de reversa"
-    ])
+    if "Exitosa" in tipo_registro:
+        faltas = ["Operación realizada de manera exitosa y segura"]
+        observaciones = st.text_area("Observaciones / Detalles de la operación")
+        sancion = st.text_area("Comentarios / Feedback positivo (Opcional)")
+    else:
+        faltas = st.multiselect("Tipos de Incumplimiento", [
+            "No utiliza Cuñas/Calzas", "Situacion de riesgo", "Falta de E.P.P",
+            "Uso del celular", "Comportamiento indebido", "No cumple con el punto seguro",
+            "Estaciona en zona prohibida", "No posee alarma de retroceso",
+            "Exceso de velocidad", "Interaccion Hombre-Maquina",
+            "No espera a ser asistido en la Maniobra de reversa"
+        ])
+        observaciones = st.text_area("Observaciones")
+        sancion = st.text_area("Sanción aplicada / Detalles de la medida")
 
-    observaciones = st.text_area("Observaciones")
-    sancion = st.text_area("Sanción aplicada / Detalles de la medida")
     fecha = st.date_input("Fecha del Evento", date.today())
     foto = st.file_uploader("Adjuntar Evidencia Fotográfica", type=["jpg", "jpeg", "png"])
 
     if st.button("Guardar Informe", type="primary"):
         if not operario:
             st.error("Por favor, seleccione un operario/chofer válido.")
-        elif not faltas:
+        elif "Infracción" in tipo_registro and not faltas:
             st.error("Debe seleccionar al menos un tipo de incumplimiento.")
         else:
             try:
@@ -320,7 +356,9 @@ with tab_reg:
                     "observaciones": observaciones,
                     "sancion": sancion,
                     "foto_path": foto_url,
-                    "grupo_lista": grupo
+                    "grupo_lista": grupo,
+                    "sector": sector,
+                    "tipo_operacion": tipo_registro
                 }
                 supabase.table(TABLA).insert(datos_informe).execute()
                 st.success("¡Informe registrado exitosamente!")
@@ -338,20 +376,28 @@ with tab_hist:
         st.info("Todavía no hay informes registrados.")
     else:
         dfh = pd.DataFrame(datos_hist)
-        
-        grupos_disponibles = ["Mostrar Todos"] + sorted(
-            [str(x) for x in dfh["grupo_lista"].dropna().unique() if str(x).strip()]
-        ) if "grupo_lista" in dfh.columns else ["Mostrar Todos"]
+         
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            grupos_disponibles = ["Mostrar Todos"] + sorted(
+                [str(x) for x in dfh["grupo_lista"].dropna().unique() if str(x).strip()]
+            ) if "grupo_lista" in dfh.columns else ["Mostrar Todos"]
+            filtro_grupo = st.selectbox("Filtrar por grupo", grupos_disponibles)
+            if filtro_grupo != "Mostrar Todos":
+                dfh = dfh[dfh["grupo_lista"].astype(str) == filtro_grupo]
 
-        filtro = st.selectbox("Filtrar por grupo", grupos_disponibles)
-        if filtro != "Mostrar Todos":
-            dfh = dfh[dfh["grupo_lista"].astype(str) == filtro]
+        with col_f2:
+            tipos_op_disp = ["Mostrar Todos"] + sorted(
+                [str(x) for x in dfh["tipo_operacion"].dropna().unique() if str(x).strip()]
+            ) if "tipo_operacion" in dfh.columns else ["Mostrar Todos"]
+            filtro_tipo = st.selectbox("Filtrar por tipo de registro", tipos_op_disp)
+            if filtro_tipo != "Mostrar Todos":
+                dfh = dfh[dfh["tipo_operacion"].astype(str) == filtro_tipo]
 
-        # Paginación
         TAMANO_PAGINA = 10
         total_paginas = max(1, (len(dfh) + TAMANO_PAGINA - 1) // TAMANO_PAGINA)
         pagina_actual = st.number_input("Página", min_value=1, max_value=total_paginas, value=1)
-        
+         
         inicio = (pagina_actual - 1) * TAMANO_PAGINA
         fin = inicio + TAMANO_PAGINA
         dfh_paginado = dfh.iloc[inicio:fin]
@@ -360,25 +406,42 @@ with tab_hist:
             rid = row.get("id", "N/A")
             op = row.get("operario", "N/A")
             fec = row.get("fecha", "N/A")
+            t_op = row.get("tipo_operacion", "Desvío")
+            sect = row.get("sector", "Sin sector")
 
-            with st.expander(f"📄 Informe #{rid} - {op} - {fec}"):
+            icono = "✅" if "Exitosa" in str(t_op) else "📄"
+
+            with st.expander(f"{icono} Informe #{rid} - {op} - {fec} ({sect})"):
                 col1, col2 = st.columns([2, 1])
 
                 with col1:
                     st.markdown(f"**Fecha:** {fec}")
                     st.markdown(f"**Operario:** {op}")
                     st.markdown(f"**Grupo:** {row.get('grupo_lista', 'N/A')}")
-                    st.markdown("**Incumplimientos:**")
-                    for falta in re.split(r"[\n,;]+", str(row.get("faltas", ""))):
-                        if falta.strip():
-                            st.markdown(f"• {falta.strip()}")
+                    st.markdown(f"**Sector:** {sect}")
+                    st.markdown(f"**Tipo de Registro:** {t_op}")
+                    
+                    if "Exitosa" in str(t_op):
+                        st.markdown("**Detalle:**")
+                        st.markdown(f"• {row.get('faltas', 'Operación correcta')}")
+                        if row.get("observaciones"):
+                            st.markdown("**Observaciones:**")
+                            st.write(row.get("observaciones"))
+                        if row.get("sancion"):
+                            st.markdown("**Feedback / Comentarios:**")
+                            st.write(row.get("sancion"))
+                    else:
+                        st.markdown("**Incumplimientos:**")
+                        for falta in re.split(r"[\n,;]+", str(row.get("faltas", ""))):
+                            if falta.strip():
+                                st.markdown(f"• {falta.strip()}")
 
-                    if row.get("observaciones"):
-                        st.markdown("**Observaciones:**")
-                        st.write(row.get("observaciones"))
+                        if row.get("observaciones"):
+                            st.markdown("**Observaciones:**")
+                            st.write(row.get("observaciones"))
 
-                    st.markdown("**Sanción / Observaciones:**")
-                    st.write(row.get("sancion") or "Sin observaciones registradas.")
+                        st.markdown("**Sanción / Observaciones:**")
+                        st.write(row.get("sancion") or "Sin observaciones registradas.")
 
                 with col2:
                     url = obtener_url_foto(row.get("foto_path"))
@@ -387,7 +450,6 @@ with tab_hist:
                     else:
                         st.caption("Sin evidencia fotográfica")
 
-                # Generación de PDF bajo demanda
                 if st.button(f"📄 Preparar PDF de Informe #{rid}", key=f"btn_pdf_{rid}"):
                     with st.spinner("Generando documento..."):
                         try:
