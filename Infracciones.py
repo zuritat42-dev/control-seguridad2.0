@@ -37,7 +37,8 @@ MAPA_LISTAS = {
     "Choferes de T2": ("T2", "choferes_t2.txt"),
     "Choferes de T2 Catamarca": ("T2 Catamarca", "choferes_t2_catamarca.txt"),
     "Choferes de T2 La Rioja": ("T2 La Rioja", "choferes_t2_larioja.txt"),
-    "Choferes de T2 Santiago Del Estero": ("T2 Santiago Del Estero", "choferes_t2_santiago.txt")
+    "Choferes de T2 Santiago Del Estero": ("T2 Santiago Del Estero", "choferes_t2_santiago.txt"),
+    "Choferes de T0/Residentes Tucuman": ("T0 Tucumán", "choferes_t0_tucuman.txt")
 }
 
 SECTORES_DISPONIBLES = [
