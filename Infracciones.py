@@ -256,26 +256,9 @@ st.title("Sistema de Gestión de Seguridad e Higiene")
 st.caption("Registro permanente de informes y evidencias fotográficas.")
 
 # ============================================================
-# ALERTA DE REINCIDENCIA
+# PESTAÑAS (Menú Principal, Historial y Alertas de Reincidencia)
 # ============================================================
-datos = consultar_infracciones()
-if datos:
-    df = pd.DataFrame(datos)
-    if not df.empty and "operario" in df.columns and "tipo_operacion" in df.columns:
-        df_infracciones = df[df["tipo_operacion"].str.contains("Infracción", case=False, na=True)]
-        if not df_infracciones.empty:
-            reincidentes = df_infracciones["operario"].value_counts()
-            reincidentes = reincidentes[reincidentes >= 3]
-            if not reincidentes.empty:
-                with st.container(border=True):
-                    st.error("ALERTA DE SEGURIDAD: CONTROL DE REINCIDENCIA CRÍTICA")
-                    for chofer, total in reincidentes.items():
-                        st.markdown(f"* El conductor **{chofer}** ha acumulado **{total} informes de desvío**.")
-
-# ============================================================
-# PESTAÑAS
-# ============================================================
-tab_reg, tab_hist = st.tabs(["Registro de Incidencias", "Historial de Informes"])
+tab_reg, tab_hist, tab_alertas = st.tabs(["Registro de Incidencias", "Historial de Informes", "Alertas de Reincidencia"])
 
 # PESTAÑA 1: REGISTRO
 with tab_reg:
@@ -463,3 +446,38 @@ with tab_hist:
                             )
                         except Exception as e:
                             st.error(f"No se pudo generar el PDF: {e}")
+
+# PESTAÑA 3: ALERTAS DE REINCIDENCIA
+with tab_alertas:
+    st.subheader("Registro de Alertas por Reincidencia Crítica")
+    st.markdown("Choferes que acumulan **3 o más informes de desvío o infracción**:")
+
+    datos_alertas = consultar_infracciones()
+    if not datos_alertas:
+        st.info("No hay registros disponibles para evaluar reincidencias.")
+    else:
+        df_alerta = pd.DataFrame(datos_alertas)
+        if not df_alerta.empty and "operario" in df_alerta.columns and "tipo_operacion" in df_alerta.columns:
+            # Filtrar únicamente por tipo de operación de infracción/desvío
+            df_infracciones = df_alerta[df_alerta["tipo_operacion"].str.contains("Infracción", case=False, na=True)]
+            
+            if not df_infracciones.empty:
+                reincidentes = df_infracciones["operario"].value_counts()
+                reincidentes = reincidentes[reincidentes >= 3]
+
+                if reincidentes.empty:
+                    st.success("¡Excelente! Actualmente no hay choferes con reincidencia crítica (3 o más infracciones).")
+                else:
+                    for chofer, total in reincidentes.items():
+                        with st.container(border=True):
+                            st.error(f"⚠️ **ALERTA CRÍTICA:** El conductor **{chofer}** acumula **{total} informes de desvío**.")
+                            
+                            # Mostrar el detalle de los informes de este chofer reincidente
+                            with st.expander(f"Ver detalle de informes de {chofer}"):
+                                registros_chofer = df_infracciones[df_infracciones["operario"] == chofer]
+                                for _, inf_row in registros_chofer.iterrows():
+                                    st.markdown(f"- **ID:** #{inf_row.get('id')} | **Fecha:** {inf_row.get('fecha')} | **Sector:** {inf_row.get('sector')} | **Faltas:** {inf_row.get('faltas')}")
+            else:
+                st.success("No hay registros de infracciones cargados.")
+        else:
+            st.info("No hay suficientes datos procesables.")
